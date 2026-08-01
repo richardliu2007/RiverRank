@@ -30,6 +30,7 @@ class Deck:
         #pops the cards out of self.deck after dealing
         #returns the flop cards as a list of lists
         flop = []
+        self.burn()
         flop.append(self.deck.pop())
         flop.append(self.deck.pop())
         flop.append(self.deck.pop())
@@ -40,10 +41,12 @@ class Deck:
         #pops the cards out of self.deck after dealing
         #optional burn implementation
         #returns the turn card as a list
+        self.burn()
         return self.deck.pop()
 
     def river(self):
         #see above
+        self.burn()
         return self.deck.pop()
     
     def burn(self):
