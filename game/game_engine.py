@@ -47,11 +47,11 @@ class Game: #game abtraction: bets, action, tracking, deck, board
                 pass
         return idx
 
-
     def _nextAct(self):
         """
         Cycle to the next active player
         No player left to act: proceed to next street
+        This method is intended to be called independently of player actions
         """
         idx = self.action_idx
         self.action_idx = self._nextSeat(self.action_idx)
@@ -142,6 +142,16 @@ class Game: #game abtraction: bets, action, tracking, deck, board
                 res = False
         return res
 
+    def _commit(self, player:Player, amount):
+        if amount < 0: pass
+        if amount > player.stack: pass
+        player.stack -= amount
+        player.total_bet += amount
+        player.street_bet += amount
+        if player.stack == 0: player.all_in = True
+        self.pot += amount
+        return amount
+
     def _fold(self, player:Player):
         player.folded = True
         player.to_act = False
@@ -152,18 +162,13 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         self._nextAct()
 
     def _bet(self, player:Player, amount):
-        if amount >= player.stack:
-            player.all_in = True
-            self.pot += player.stack
-            player.stack = 0
-            player.total_bet += player.stack
-            player.street_bet = amount
-            self.toRaise = player.stack
-        player.stack -= amount
-        player.total_bet += amount
-        player.street_bet = amount
+        if amount <= player.stack:
+            self._commit(player, amount)
+            self.toRaise = amount
+        else:
+            pass
         for villain in self.players:
-            player.to_act = True
+            villain.to_act = True
         player.to_act = False
         self.pot += amount
         self.outstanding_bet = amount
@@ -174,49 +179,42 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         Can only raise if:
         Raise at least the amount of the most recent bet/raise
         Raise to less than double and go all-in
-        Only give the raise option to players who can legally raise
-        This method will not be provided to players with a stack size <= outstanding bet
         """
+        if amount >= player.stack: pass
+        if player.stack < self.outstanding_bet: pass #pass if raise is invalid
         if player.stack < self.outstanding_bet + self.toRaise:
             if amount < player.stack: pass
-            player.all_in = True
-            self.pot += player.stack
-            player.stack = 0
-            player.total_bet += player.stack
-            player.street_bet = amount
+            self._commit(player, amount)
             self.outstanding_bet = player.stack
         if player.stack > self.outstanding_bet + self.toRaise:  
             if amount + player.street_bet < self.outstanding_bet + self.toRaise: pass
-            player.stack -= amount
-            player.total_bet += amount
-            player.street_bet = amount
-            self.toRaise = amount - self.outstanding_bet - self.toRaise
-            self.outstanding_bet = amount
+            self._commit(player, amount)
+            self.toRaise = amount - self.outstanding_bet
+            self.outstanding_bet = player.street_bet
         for villain in self.players:
-            player.to_act = True
+            villain.to_act = True
         player.to_act = False
-        self.pot += amount
-        self.outstanding_bet = amount
 
     def _allIn(self, player:Player):
-        player.all_in = True
-        self.pot += player.stack
-        if player.stack + player.street_bet > self.outstanding_bet:
-            if player.stack + player.street_bet > self.outstanding_bet + self.toRaise:
-                self.toRaise = player.stack + player.street_bet - self.outstanding_bet
-            self.outstanding_bet = player.stack + player.street_bet
-            
-        player.stack = 0
+        """
+        An all-in is legal when calling all-in, raising all-in, or open jamming
+        """
+        if self.outstanding_bet == 0:
+            self._bet(player, player.stack)
+        elif player.stack + player.street_bet > self.outstanding_bet:
+            self._raise(player, player.stack)
+        else:
+            self._call(player)
 
     def _call(self, player:Player):
         """Call if legal, else disable this action for a player and force them all-in"""
-        if player.stack > self.outstanding_bet:
-            player.stack -= self.outstanding_bet
-            self.pot += self.outstanding_bet
+        if self.outstanding_bet < player.stack:
+            self._commit(player, self.outstanding_bet)
             player.to_act = False
-            self._nextAct()
         else:
-            pass
+            self._commit(player, player.stack)
+            player.to_act = False
+
 
     def _eliminate(self, player:Player):
         if player not in self.players: pass
