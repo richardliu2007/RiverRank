@@ -221,14 +221,11 @@ class Game: #game abtraction: bets, action, tracking, deck, board
 
     def _call(self, player:Player):
         self._validateAction(player)
+        callAmount = self.outstanding_bet - player.street_bet
         """Call if legal, else disable this action for a player and force them all-in"""
-        if self.outstanding_bet == 0: raise ValueError("Call illegal. Try check instead.")
-        if self.outstanding_bet < player.stack:
-            self._commit(player, self.outstanding_bet)
-            player.to_act = False
-        else:
-            self._commit(player, player.stack)
-            player.to_act = False
+        if callAmount <= 0: raise ValueError("Call illegal. Try check instead.")
+        self._commit(player, callAmount)
+        player.to_act = False
 
 
     def _eliminate(self, player:Player):
