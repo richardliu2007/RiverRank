@@ -170,6 +170,15 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         player.to_act = False
         self._nextAct()
 
+    def reopenAction(self, player):
+        for player in self.players:
+            player.to_act = (
+                player is not player
+                and not player.eliminated
+                and not player.folded
+                and not player.all_in
+            )
+
     def _bet(self, player:Player, amount):
         self._validateAction(player)
         if self.outstanding_bet != 0: raise ValueError("Bet illegal. Try raise instead.")
@@ -178,8 +187,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             self.toRaise = amount
         else:
             raise ValueError("Betting is invalid. Try all-in instead.")
-        for villain in self.players:
-            villain.to_act = True
+        self.reopenAction(player)
         player.to_act = False
         self.pot += amount
         self.outstanding_bet = amount
@@ -203,8 +211,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             self._commit(player, amount)
             self.toRaise = amount - self.outstanding_bet
             self.outstanding_bet = player.street_bet
-        for villain in self.players:
-            villain.to_act = True
+        self.reopenAction(player)
         player.to_act = False
 
     def _allIn(self, player:Player):
