@@ -155,19 +155,23 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         self.pot += actual_amount
         return actual_amount
 
-    def _validateAction(self, player):
-        if player not in self.players or 
+    def _validateAction(self, player:Player):
+        if player not in self.players or self.players[self.action_idx] is not player or player.eliminated or player.folded or player.all_in:
+            raise ValueError("Player not eligle to act.")
 
     def _fold(self, player:Player):
+        self._validateAction(player)
         player.folded = True
         player.to_act = False
         self._nextAct()
         
     def _check(self, player:Player):
+        self._validateAction(player)
         player.to_act = False
         self._nextAct()
 
     def _bet(self, player:Player, amount):
+        self._validateAction(player)
         if self.outstanding_bet != 0: raise ValueError("Bet illegal. Try raise instead.")
         if amount <= player.stack:
             self._commit(player, amount)
@@ -187,6 +191,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         Raise at least the amount of the most recent bet/raise
         Raise to less than double and go all-in
         """
+        self._validateAction(player)
         if amount >= player.stack: raise ValueError("Raising is invalid. Try all-in instead.")
         if player.stack < self.outstanding_bet: pass #pass if raise is invalid
         if player.stack < self.outstanding_bet + self.toRaise:
@@ -206,6 +211,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         """
         An all-in is legal when calling all-in, raising all-in, or open jamming
         """
+        self._validateAction(player)
         if self.outstanding_bet == 0:
             self._bet(player, player.stack)
         elif player.stack + player.street_bet > self.outstanding_bet:
@@ -214,6 +220,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             self._call(player)
 
     def _call(self, player:Player):
+        self._validateAction(player)
         """Call if legal, else disable this action for a player and force them all-in"""
         if self.outstanding_bet == 0: raise ValueError("Call illegal. Try check instead.")
         if self.outstanding_bet < player.stack:
