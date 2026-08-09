@@ -181,35 +181,28 @@ class Game: #game abtraction: bets, action, tracking, deck, board
 
     def _bet(self, player:Player, amount):
         self._validateAction(player)
-        if self.outstanding_bet != 0: raise ValueError("Bet illegal. Try raise instead.")
-        if amount <= player.stack:
-            self._commit(player, amount)
-            self.toRaise = amount
+        if self.outstanding_bet != 0 or amount <= 0: raise ValueError("Bet illegal. Try raise instead.")
+        if amount >= player.stack:
+            self._allIn(player)
         else:
-            raise ValueError("Betting is invalid. Try all-in instead.")
+            self._commit(player, amount)
         self.reopenAction(player)
         player.to_act = False
-        self.pot += amount
-        self.outstanding_bet = amount
-        self.toRaise = amount
+        self.outstanding_bet += player.street_bet
+        self.toRaise = player.street_bet
 
     def _raise(self, player:Player, amount):
-        """
-        Can only raise if:
-        Raise at least the amount of the most recent bet/raise
-        Raise to less than double and go all-in
-        """
+        #amount is the player's total street bet after the raise
         self._validateAction(player)
-        if amount >= player.stack: raise ValueError("Raising is invalid. Try all-in instead.")
-        if player.stack < self.outstanding_bet: pass #pass if raise is invalid
+        if self.outstanding_bet == 0 or amount <= self.outstanding_bet: raise ValueError("Raising is invalid. Try all-in instead.")
+        if player.stack <= self.outstanding_bet: raise ValueError("Raising is invalid. Try all-in instead.")
         if player.stack < self.outstanding_bet + self.toRaise:
-            if amount < player.stack: pass
-            self._commit(player, amount)
-            self.outstanding_bet = player.stack
-        if player.stack > self.outstanding_bet + self.toRaise:  
-            if amount + player.street_bet < self.outstanding_bet + self.toRaise: pass
-            self._commit(player, amount)
-            self.toRaise = amount - self.outstanding_bet
+            self._allIn(player)
+        if player.stack >= self.outstanding_bet + self.toRaise:
+            if amount < self.outstanding_bet + self.toRaise: raise ValueError("Raising is invalid. Try all-in instead.")
+            raised = amount  - player.street_bet
+            self._commit(player, raised)
+            self.toRaise = raised
             self.outstanding_bet = player.street_bet
         self.reopenAction(player)
         player.to_act = False
