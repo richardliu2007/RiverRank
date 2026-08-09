@@ -13,10 +13,7 @@ class Player: #player abtraction
     folded:bool = False
     to_act:bool = True
     def in_hand(self):
-        if self.all_in: return True
-        if not self.folded: return True
-        if not self.eliminated: return False
-        return False
+        return not self.eliminated and not self.folded
 
 class Game: #game abtraction: bets, action, tracking, deck, board
     def __init__(self, sb_idx:int, bb_idx:int, btn_idx:int, players:list[Player]):
@@ -35,39 +32,46 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         self.pot = 0
         self.board = []
         self.action_idx = (self.bb_idx+ 1) % len(self.players)
-        self.handEnded = False
         self.outstanding_bet = 0
         self.toRaise = 0
+        self.gameActive = True
 
-    def _nextSeat(self, idx):
-        for _ in range(len(self.players)):
-            idx = (idx + 1) % len(self.players)
-            player = self.players[idx]
-            if player.eliminated or player.all_in or player.folded or not player.to_act:
-                pass
-        return idx
+    def _nextSeat(self, idx) -> int:
+        for offset in range(1, len(self.players) + 1):
+            index = (idx + offset) % len(self.players)
+            if not self.players[index].eliminated:
+                return index
+        return None
 
-    def _nextAct(self):
+    def _nextAct(self) -> int:
         """
         Cycle to the next active player
         No player left to act: proceed to next street
         This method is intended to be called independently of player actions
         """
-        idx = self.action_idx
-        self.action_idx = self._nextSeat(self.action_idx)
-        if idx == self.action_idx:
-            if self.street == "preflop":
-                self.street = "flop"
-                self._startStreet()
-            if self.street == "flop":
-                self.street = "turn"
-                self._startStreet()
-            if self.street == "turn":
-                self.street = "river"
-                self._startStreet()        
-            if self.street == "river":
-                self._showdown()  
+        index = None
+        for offset in range(1, len(self.players) + 1):
+            idx = (self.action_idx + offset) % len(self.players)
+            player = self.players[idx]
+            if (not player.eliminated and not player.folded and not player.all_in and player.to_act):
+                index = idx
+        if index is None: self._nextStreet()
+        else: self.action_idx = index
 
+    def _nextStreet(self):
+        if self.street == "preflop":
+            self.street = "flop"
+            self._startStreet()
+        elif self.street == "flop":
+            self.street = "turn"
+            self._startStreet()
+        elif self.street == "turn":
+            self.street = "river"
+            self._startStreet()
+        elif self.street == "river":
+            self.street = "showdown"
+            self._showdown()
+        
     def _startStreet(self):
         activeCount = 0
         for player in self.players:
@@ -80,9 +84,9 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         if self.street == "flop":
             self.board = self.deck.flop()
         if self.street == "turn":
-            self.board += (self.deck.turn())
+            self.board.append(self.deck.turn())
         if self.street == "river":
-            self.board += (self.deck.river())
+            self.board.append(self.deck.river())
         self.outstanding_bet = 0
         self.toRaise = 0
 
@@ -109,12 +113,11 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         self.handEnded = False
         for player in self.players:
             player.cards = []
-            if not player.eliminated:
-                player.total_bet = 0
-                player.street_bet = 0
-                player.folded = False
-                player.all_in = False
-                player.to_act = True
+            player.total_bet = 0
+            player.street_bet = 0
+            player.folded = False
+            player.all_in = False
+            player.to_act = True
 
     def _startHand(self):
         """
@@ -143,14 +146,17 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         return res
 
     def _commit(self, player:Player, amount):
-        if amount < 0: pass
-        if amount > player.stack: pass
-        player.stack -= amount
-        player.total_bet += amount
-        player.street_bet += amount
+        if amount < 0: raise ValueError("Contribution must be non-negative")
+        actual_amount = min(amount, player.stack)
+        player.stack -= actual_amount
+        player.total_bet += actual_amount
+        player.street_bet += actual_amount
         if player.stack == 0: player.all_in = True
-        self.pot += amount
-        return amount
+        self.pot += actual_amount
+        return actual_amount
+
+    def _validateAction(self, player):
+        if player not in self.players or 
 
     def _fold(self, player:Player):
         player.folded = True
@@ -162,11 +168,12 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         self._nextAct()
 
     def _bet(self, player:Player, amount):
+        if self.outstanding_bet != 0: raise ValueError("Bet illegal. Try raise instead.")
         if amount <= player.stack:
             self._commit(player, amount)
             self.toRaise = amount
         else:
-            pass
+            raise ValueError("Betting is invalid. Try all-in instead.")
         for villain in self.players:
             villain.to_act = True
         player.to_act = False
@@ -180,7 +187,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         Raise at least the amount of the most recent bet/raise
         Raise to less than double and go all-in
         """
-        if amount >= player.stack: pass
+        if amount >= player.stack: raise ValueError("Raising is invalid. Try all-in instead.")
         if player.stack < self.outstanding_bet: pass #pass if raise is invalid
         if player.stack < self.outstanding_bet + self.toRaise:
             if amount < player.stack: pass
@@ -208,6 +215,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
 
     def _call(self, player:Player):
         """Call if legal, else disable this action for a player and force them all-in"""
+        if self.outstanding_bet == 0: raise ValueError("Call illegal. Try check instead.")
         if self.outstanding_bet < player.stack:
             self._commit(player, self.outstanding_bet)
             player.to_act = False
@@ -217,8 +225,8 @@ class Game: #game abtraction: bets, action, tracking, deck, board
 
 
     def _eliminate(self, player:Player):
-        if player not in self.players: pass
-        if player.stack != 0: pass
+        if player not in self.players: raise ValueError("Player does not exist")
+        if player.stack != 0: raise ValueError("Player still has chips")
         player.eliminated = True
 
     def _showdown(self):
@@ -228,5 +236,33 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         Afterwards, reset hand
         """
         pass
+
+    def _checkHandActive(self) -> bool:
+        """
+        A hand is active if:
+        At least 2 players in the hand have not folded
+        
+        A hand is inactive if:
+        Only 1 player has not folded
+        Showdown has been evaluated
+        """
+        if self.street == "showdown": return False
+        actives = 0
+        for player in self.players:
+            if player.eliminated == False:
+                actives += 1
+        return actives > 1
+
+    def _checkGameOver(self):
+        actives = 0
+        candidateWinner = None
+        for player in self.players:
+            if player.eliminated == False:
+                actives += 1
+                candidateWinner = player
+        if actives == 1:
+            return candidateWinner
+        return None
+
 
 
