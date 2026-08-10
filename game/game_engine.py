@@ -4,7 +4,7 @@ from game.deck import Deck
 @dataclass
 class Player: #player abtraction
     name:str
-    stack:int
+    stack:int = 0
     cards: list[tuple[int, str]] = field(default_factory=list)
     total_bet:int = 0
     street_bet:int = 0
@@ -39,7 +39,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
     def _nextSeat(self, idx) -> int:
         for offset in range(1, len(self.players) + 1):
             index = (idx + offset) % len(self.players)
-            if not self.players[index].eliminated:
+            if not self.players[index].eliminated and index != idx:
                 return index
         return None
 
@@ -84,7 +84,8 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             self.street = "showdown"
             self._showdown() #go straight to showdown
             return
-        self.action_idx = self._nextSeat(self.btn_idx)
+        self.action_idx = self.btn_idx
+        self._nextAct()
         if self.street == "flop":
             self.board = self.deck.flop()
         if self.street == "turn":
