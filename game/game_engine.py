@@ -43,7 +43,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
                 return index
         return None
 
-    def _nextAct(self) -> int:
+    def _nextAct(self):
         """
         Cycle to the next active player
         No player left to act: proceed to next street
@@ -55,6 +55,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             player = self.players[idx]
             if (not player.eliminated and not player.folded and not player.all_in and player.to_act):
                 index = idx
+                break
         if index is None: self._nextStreet()
         else: self.action_idx = index
 
