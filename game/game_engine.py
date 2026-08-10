@@ -80,7 +80,10 @@ class Game: #game abtraction: bets, action, tracking, deck, board
                 activeCount += 1
                 player.to_act = True
                 player.street_bet = 0
-        if activeCount < 2: self._showdown() #go straight to showdown
+        if activeCount < 2:
+            self.street = "showdown"
+            self._showdown() #go straight to showdown
+            return
         self.action_idx = self._nextSeat(self.btn_idx)
         if self.street == "flop":
             self.board = self.deck.flop()
@@ -172,12 +175,12 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         self._nextAct()
 
     def reopenAction(self, player):
-        for player in self.players:
-            player.to_act = (
-                player is not player
-                and not player.eliminated
-                and not player.folded
-                and not player.all_in
+        for p in self.players:
+            p.to_act = (
+                p is not player
+                and not p.eliminated
+                and not p.folded
+                and not p.all_in
             )
 
     def _bet(self, player:Player, amount):
