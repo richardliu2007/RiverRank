@@ -75,14 +75,17 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         
     def _startStreet(self):
         activeCount = 0
+        isLast = None
         for player in self.players:
             if not player.folded and not player.eliminated and not player.all_in:
                 activeCount += 1
                 player.to_act = True
+                isLast = player
                 player.street_bet = 0
         if activeCount < 2:
-            self.street = "showdown"
-            self._showdown() #go straight to showdown
+            isLast.stack += self.pot
+            self.pot = 0
+            self.resetHand()
             return
         self.action_idx = self.btn_idx
         self._nextAct()
@@ -129,6 +132,8 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         Reset game state, update active players, reset deck, move blinds, reset board
         """
         #to-do: implement 2-player case
+        isWinner =  self._checkGameOver()
+        if isWinner: return isWinner
         self.resetHand()
         self.deck.newRound()
         self.btn_idx = self._nextSeat(self.btn_idx)
@@ -137,9 +142,8 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         self.action_idx = self._nextSeat(self.bb_idx)
         for player in self.players:
             if not player.eliminated: player.cards = self.deck.deal()
-        self.players[self.sb_idx].stack -= self.blinds["small"]
-        self.players[self.bb_idx].stack -= self.blinds["big"]
-        self.pot += self.blinds["small"] + self.blinds["big"]
+        self._commit(self.players[self.sb_idx], self.blinds["small"])
+        self._commit(self.players[self.bb_idx], self.blinds["big"])
         self.outstanding_bet = self.blinds["big"]
 
     def _streetOver(self):
