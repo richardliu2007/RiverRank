@@ -18,6 +18,9 @@ class Player: #player abtraction
 class Game: #game abtraction: bets, action, tracking, deck, board
     def __init__(self, sb_idx:int, bb_idx:int, btn_idx:int, players:list[Player]):
         if len(players) < 2: raise ValueError("Not enough players.")
+        for index in (sb_idx, bb_idx, btn_idx):
+            if not 0 <= index < len(players):
+                raise ValueError("Seat index is out of range")
         self.street = "preflop"
         self.timeLimit = 30 #limit time to act per player
         self.numHands = 0 #keep track of when to increase blinds
@@ -92,7 +95,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             self.pot = 0
             self._startHand()
             return
-        elif len(players_who_can_act) == 0:
+        elif len(players_who_can_act) < 0:
             if self.street == "flop":
                 self.board = self.deck.flop()
                 self.street = "turn"
@@ -101,9 +104,17 @@ class Game: #game abtraction: bets, action, tracking, deck, board
                 self.street = "river"
             if self.street == "river":
                 self.board.append(self.deck.river())
+                self.street = "showdown"
                 self._showdown()
         else:
             # Start normal betting street.
+            for player in self.players:
+                player.street_bet = 0
+                player.to_act = (
+                    not player.eliminated
+                    and not player.folded
+                    and not player.all_in
+                )
             self.action_idx = self.btn_idx
             self._nextAct()
             if self.street == "flop":
