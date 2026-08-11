@@ -76,27 +76,44 @@ class Game: #game abtraction: bets, action, tracking, deck, board
     def _startStreet(self):
         activeCount = 0
         isLast = None
-        for player in self.players:
-            if not player.folded and not player.eliminated and not player.all_in:
-                activeCount += 1
-                player.to_act = True
-                isLast = player
-                player.street_bet = 0
-        if activeCount < 2:
-            isLast.stack += self.pot
+        players_in_hand = [
+            player
+            for player in self.players
+            if not player.eliminated and not player.folded
+        ]
+
+        players_who_can_act = [
+            player
+            for player in players_in_hand
+            if not player.all_in
+        ]
+        if len(players_in_hand) == 1:
+            players_in_hand[0].stack += self.pot
             self.pot = 0
-            self.resetHand()
+            self._startHand()
             return
-        self.action_idx = self.btn_idx
-        self._nextAct()
-        if self.street == "flop":
-            self.board = self.deck.flop()
-        if self.street == "turn":
-            self.board.append(self.deck.turn())
-        if self.street == "river":
-            self.board.append(self.deck.river())
-        self.outstanding_bet = 0
-        self.toRaise = 0
+        elif len(players_who_can_act) == 0:
+            if self.street == "flop":
+                self.board = self.deck.flop()
+                self.street = "turn"
+            if self.street == "turn":
+                self.board.append(self.deck.turn())
+                self.street = "river"
+            if self.street == "river":
+                self.board.append(self.deck.river())
+                self._showdown()
+        else:
+            # Start normal betting street.
+            self.action_idx = self.btn_idx
+            self._nextAct()
+            if self.street == "flop":
+                self.board = self.deck.flop()
+            if self.street == "turn":
+                self.board.append(self.deck.turn())
+            if self.street == "river":
+                self.board.append(self.deck.river())
+            self.outstanding_bet = 0
+            self.toRaise = 0
 
     def _flop(self):
         self.street = "flop"
