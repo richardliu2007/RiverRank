@@ -327,6 +327,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
                 self.players[index].stack += 1
         self.handEnded = True
         self.action_idx = None
+        self.pot = 0
 
     def _checkHandActive(self) -> bool:
         """
