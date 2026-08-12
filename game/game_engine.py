@@ -16,7 +16,7 @@ class Player: #player abtraction
         return not self.eliminated and not self.folded
 
 class Game: #game abtraction: bets, action, tracking, deck, board
-    def __init__(self, sb_idx:int, bb_idx:int, btn_idx:int, players:list[Player]):
+    def __init__(self, sb_idx:int, bb_idx:int, btn_idx:int, players:list[Player], starting_stack:int):
         if len(players) < 2: raise ValueError("Not enough players.")
         for index in (sb_idx, bb_idx, btn_idx):
             if not 0 <= index < len(players):
@@ -30,7 +30,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         self.blinds = {"small":10, "big":20}
         self.players = players
         for player in self.players: #all players start with 2000 chips in a new game
-            player.stack = 2000
+            player.stack = starting_stack
         self.deck = Deck()
         self.pot = 0
         self.board = []
