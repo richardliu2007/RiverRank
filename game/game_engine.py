@@ -38,6 +38,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         self.outstanding_bet = 0
         self.toRaise = 0
         self.gameActive = True
+        self.handEnded = False
 
     def _nextSeat(self, idx) -> int:
         for offset in range(1, len(self.players) + 1):
@@ -77,8 +78,6 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             self._showdown()
         
     def _startStreet(self):
-        activeCount = 0
-        isLast = None
         players_in_hand = [
             player
             for player in self.players
@@ -91,11 +90,12 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             if not player.all_in
         ]
         if len(players_in_hand) == 1:
-            players_in_hand[0].stack += self.pot
+            winner = players_in_hand[0]
+            winner.stack += self.pot
             self.pot = 0
-            self._startHand()
+            self.handEnded = True
             return
-        elif len(players_who_can_act) < 0:
+        elif len(players_who_can_act) < 2:
             if self.street == "flop":
                 self.board = self.deck.flop()
                 self.street = "turn"
