@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from game.deck import Deck
+from game.hand_evaluation import evaluate_7
 
 @dataclass
 class Player: #player abtraction
@@ -62,20 +63,6 @@ class Game: #game abtraction: bets, action, tracking, deck, board
                 break
         if index is None: self._nextStreet()
         else: self.action_idx = index
-
-    def _nextStreet(self):
-        if self.street == "preflop":
-            self.street = "flop"
-            self._startStreet()
-        elif self.street == "flop":
-            self.street = "turn"
-            self._startStreet()
-        elif self.street == "turn":
-            self.street = "river"
-            self._startStreet()
-        elif self.street == "river":
-            self.street = "showdown"
-            self._showdown()
         
     def _startStreet(self):
         players_in_hand = [
@@ -94,6 +81,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             winner.stack += self.pot
             self.pot = 0
             self.handEnded = True
+            self.action_idx = None
             return
         elif len(players_who_can_act) < 2:
             if self.street == "flop":
@@ -125,6 +113,20 @@ class Game: #game abtraction: bets, action, tracking, deck, board
                 self.board.append(self.deck.river())
             self.outstanding_bet = 0
             self.toRaise = 0
+
+    def _nextStreet(self):
+        if self.street == "preflop":
+            self.street = "flop"
+            self._startStreet()
+        elif self.street == "flop":
+            self.street = "turn"
+            self._startStreet()
+        elif self.street == "turn":
+            self.street = "river"
+            self._startStreet()
+        elif self.street == "river":
+            self.street = "showdown"
+            self._showdown()
 
     def _flop(self):
         self.street = "flop"
@@ -200,12 +202,10 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         self._validateAction(player)
         player.folded = True
         player.to_act = False
-        self._nextAct()
         
     def _check(self, player:Player):
         self._validateAction(player)
         player.to_act = False
-        self._nextAct()
 
     def reopenAction(self, player):
         for p in self.players:
@@ -270,13 +270,63 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         if player.stack != 0: raise ValueError("Player still has chips")
         player.eliminated = True
 
+    def buildPots(self):
+        levels = sorted({
+            player.total_bet
+            for player in self.players
+            if player.total_bet > 0
+        })
+        previous_level = 0
+        pots = []
+        hand_values = {
+            index: evaluate_7(self.board + player.cards)
+            for index, player in enumerate(self.players)
+            if not player.folded and not player.eliminated
+        }
+        for level in levels:
+            contributors = [
+                player
+                for player in self.players
+                if player.total_bet >= level
+            ]
+            pot_amount = (level - previous_level) * len(contributors)
+            eligible_indexes = [
+                index
+                for index, player in enumerate(self.players)
+                if (
+                    player.total_bet >= level
+                    and not player.folded
+                    and not player.eliminated
+                )
+            ]
+            best_hand = max(hand_values[index] for index in eligible_indexes)
+            winners = [
+                index
+                for index in eligible_indexes
+                if hand_values[index] == best_hand
+            ]
+            pots.append((pot_amount, winners))
+            previous_level = level
+        return pots
+
+
     def _showdown(self):
         """
         General case: compare hands, give pot to winner, chop if needed
         All-in case: compare hands, side pot calculation
         Afterwards, reset hand
         """
-        pass
+        if len(self.board) != 5:
+            raise RuntimeError("Showdown requires five board cards")
+        pots = self.buildPots()
+        for pot in pots:
+            share, remainder = divmod(pot[0], len(pot[1]))
+            for index in pot[1]:
+                self.players[index].stack += share
+            for index in sorted(pot[1])[:remainder]:
+                self.players[index].stack += 1
+        self.handEnded = True
+        self.action_idx = None
 
     def _checkHandActive(self) -> bool:
         """
