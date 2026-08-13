@@ -63,12 +63,6 @@ class Game: #game abtraction: bets, action, tracking, deck, board
                 break
         if index is None: self._nextStreet()
         else: self.action_idx = index
-
-    def _streetOver(self):
-        for player in self.players:
-            if not player.eliminated and not player.folded and player.to_act:
-                return False
-        return True
         
     def _startStreet(self):
         players_in_hand = [
