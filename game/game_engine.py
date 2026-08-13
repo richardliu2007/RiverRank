@@ -63,6 +63,12 @@ class Game: #game abtraction: bets, action, tracking, deck, board
                 break
         if index is None: self._nextStreet()
         else: self.action_idx = index
+
+    def _streetOver(self):
+        for player in self.players:
+            if not player.eliminated and not player.folded and player.to_act:
+                return False
+        return True
         
     def _startStreet(self):
         players_in_hand = [
@@ -76,14 +82,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             for player in players_in_hand
             if not player.all_in
         ]
-        if len(players_in_hand) == 1:
-            winner = players_in_hand[0]
-            winner.stack += self.pot
-            self.pot = 0
-            self.handEnded = True
-            self.action_idx = None
-            return
-        elif len(players_who_can_act) < 2:
+        if len(players_who_can_act) < 2:
             if self.street == "flop":
                 self.board = self.deck.flop()
                 self.street = "turn"
@@ -219,10 +218,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
     def _bet(self, player:Player, amount):
         self._validateAction(player)
         if self.outstanding_bet != 0 or amount <= 0: raise ValueError("Bet illegal. Try raise instead.")
-        if amount >= player.stack:
-            self._allIn(player)
-        else:
-            self._commit(player, amount)
+        self._commit(player, amount)
         self.reopenAction(player)
         player.to_act = False
         self.outstanding_bet += player.street_bet
@@ -234,32 +230,32 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         if self.outstanding_bet == 0 or amount <= self.outstanding_bet: raise ValueError("Raising is invalid. Try all-in instead.")
         if player.stack <= self.outstanding_bet: raise ValueError("Raising is invalid. Try all-in instead.")
         if player.stack < self.outstanding_bet + self.toRaise:
-            self._allIn(player)
-        if player.stack >= self.outstanding_bet + self.toRaise:
+            self._commit(player, player.stack)
+        elif player.stack >= self.outstanding_bet + self.toRaise:
             if amount < self.outstanding_bet + self.toRaise: raise ValueError("Raising is invalid. Try all-in instead.")
-            raised = amount  - player.street_bet
+            raised = min(amount, player.stack)  - player.street_bet
             self._commit(player, raised)
             self.toRaise = raised
             self.outstanding_bet = player.street_bet
         self.reopenAction(player)
         player.to_act = False
 
-    def _allIn(self, player:Player):
-        """
-        An all-in is legal when calling all-in, raising all-in, or open jamming
-        """
-        self._validateAction(player)
-        if self.outstanding_bet == 0:
-            self._bet(player, player.stack)
-        elif player.stack + player.street_bet > self.outstanding_bet:
-            self._raise(player, player.stack)
-        else:
-            self._call(player)
+    # def _allIn(self, player:Player):
+    #     """
+    #     An all-in is legal when calling all-in, raising all-in, or open jamming
+    #     """
+    #     self._validateAction(player)
+    #     if self.outstanding_bet == 0:
+    #         self._bet(player, player.stack)
+    #     elif player.stack + player.street_bet > self.outstanding_bet:
+    #         self._raise(player, player.stack)
+    #     else:
+    #         self._call(player)
 
     def _call(self, player:Player):
         self._validateAction(player)
         callAmount = self.outstanding_bet - player.street_bet
-        """Call if legal, else disable this action for a player and force them all-in"""
+        #Call if legal, else disable this action for a player and force them all-in
         if callAmount <= 0: raise ValueError("Call illegal. Try check instead.")
         self._commit(player, callAmount)
         player.to_act = False
@@ -299,6 +295,8 @@ class Game: #game abtraction: bets, action, tracking, deck, board
                     and not player.eliminated
                 )
             ]
+            if not eligible_indexes:
+                raise RuntimeError("Pot has no eligible winner")
             best_hand = max(hand_values[index] for index in eligible_indexes)
             winners = [
                 index
@@ -307,6 +305,8 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             ]
             pots.append((pot_amount, winners))
             previous_level = level
+        if sum(amount for amount, _ in pots) != self.pot:
+            raise RuntimeError("Pot does not match player contributions")
         return pots
 
 
@@ -329,21 +329,23 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         self.action_idx = None
         self.pot = 0
 
-    def _checkHandActive(self) -> bool:
+    def _checkHandActive(self) -> None:
         """
-        A hand is active if:
-        At least 2 players in the hand have not folded
-        
-        A hand is inactive if:
-        Only 1 player has not folded
-        Showdown has been evaluated
+        Updates self.handEnded
         """
-        if self.street == "showdown": return False
+        if self.street == "showdown": self.handEnded = True
         actives = 0
         for player in self.players:
-            if player.eliminated == False:
-                actives += 1
-        return actives > 1
+            if not player.eliminated:
+                if not player.folded:
+                    actives += 1
+        if actives > 1: return
+        else:
+            self.handEnded = True
+
+    def _awardPot(self, handWinner):
+        handWinner.stack += self.pot
+        self.pot = 0
 
     def _checkGameOver(self):
         actives = 0
