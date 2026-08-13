@@ -249,6 +249,8 @@ def test_showdown_does_not_mutate_board():
     board_before = list(game.board)
     game._showdown()
     assert game.board == board_before
+    assert game.handEnded is True
+    assert game.action_idx is None
 
 def test_short_stack_only_wins_main_pot():
     players = [Player("A"), Player("B"), Player("C")]
@@ -332,5 +334,44 @@ def test_chop_pot():
     assert game.players[0].stack == 300
     assert game.players[1].stack == 300
     assert game.players[2].stack == 300
+    assert game.pot == 0
+
+def test_uncalled_excess_returns_to_only_contributor():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 2000)
+    game.players[0].stack = 300
+    game.players[1].stack = 300
+    game.players[2].stack = 600
+    game.board = [(3, 's'), (4, 's'), (5, 's'), (6, 's'), (7, 's')]
+    game.players[0].cards = [(3, 'c'), (14, 'c')]
+    game.players[1].cards = [(13, 'c'), (13, 'd')]
+    game.players[2].cards = [(14, 'd'), (14, 's')]
+    game._commit(game.players[0], 300)
+    game._commit(game.players[1], 300)
+    game._commit(game.players[2], 600)
+    game._showdown()
+    assert game.players[0].stack == 300
+    assert game.players[1].stack == 300
+    assert game.players[2].stack == 600
+    assert game.pot == 0
+
+def test_chop_odd_pot_awarded_to_lowest_index():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 2000)
+    game.players[0].stack = 300
+    game.players[1].stack = 300
+    game.players[2].stack = 300
+    game.board = [(3, 's'), (2, 'd'), (3, 'd'), (2, 's'), (7, 'c')]
+    game.players[0].cards = [(2, 'c'), (14, 'c')]
+    game.players[1].cards = [(3, 'h'), (13, 'd')]
+    game.players[2].cards = [(3, 'c'), (14, 's')]
+    game._commit(game.players[0], 11)
+    game._commit(game.players[1], 200)
+    game._commit(game.players[2], 200)
+    game.players[0].folded = True
+    game._showdown()
+    assert game.players[0].stack == 289
+    assert game.players[1].stack == 306
+    assert game.players[2].stack == 305
     assert game.pot == 0
 
