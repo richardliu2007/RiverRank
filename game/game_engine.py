@@ -48,7 +48,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
                 return index
         return None
 
-    def _nextAct(self):
+    def _nextAct(self) -> int | None:
         """
         Cycle to the next active player
         No player left to act: proceed to next street
@@ -61,51 +61,58 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             if (not player.eliminated and not player.folded and not player.all_in and player.to_act):
                 index = idx
                 break
-        if index is None: self._nextStreet()
-        else: self.action_idx = index
-        
-    def _startStreet(self):
-        players_in_hand = [
-            player
-            for player in self.players
-            if not player.eliminated and not player.folded
-        ]
+        self.action_idx = index
+        return index
 
-        players_who_can_act = [
-            player
-            for player in players_in_hand
-            if not player.all_in
-        ]
-        if len(players_who_can_act) < 2:
-            if self.street == "flop":
-                self.board = self.deck.flop()
-                self.street = "turn"
-            if self.street == "turn":
-                self.board.append(self.deck.turn())
-                self.street = "river"
-            if self.street == "river":
-                self.board.append(self.deck.river())
-                self.street = "showdown"
-                self._showdown()
-        else:
-            # Start normal betting street.
-            for player in self.players:
-                player.street_bet = 0
-                player.to_act = (
-                    not player.eliminated
-                    and not player.folded
-                    and not player.all_in
-                )
-            self.action_idx = self.btn_idx
-            self._nextAct()
-            if self.street == "flop":
-                self.board = self.deck.flop()
-            if self.street == "turn":
-                self.board.append(self.deck.turn())
-            if self.street == "river":
-                self.board.append(self.deck.river())
-            self.outstanding_bet = 0
-            self.toRaise = 0
+    def _streetOver(self):
+        """For all players, all have to either be eliminated, folded, all-in, or have finished action"""
+        res = True
+        for player in self.players:
+            if not player.eliminated and not player.folded and not player.all_in and player.to_act:
+                res = False
+        return res
+    
+    def _startStreet(self):
+        # Have this block be checked by the external controller.
+        # players_in_hand = [
+        #     player
+        #     for player in self.players
+        #     if not player.eliminated and not player.folded
+        # ]
+
+        # players_who_can_act = [
+        #     player
+        #     for player in players_in_hand
+        #     if not player.all_in
+        # ]
+        # if len(players_who_can_act) < 2:
+        #     if self.street == "flop":
+        #         self.board = self.deck.flop()
+        #         self.street = "turn"
+        #     if self.street == "turn":
+        #         self.board.append(self.deck.turn())
+        #         self.street = "river"
+        #     if self.street == "river":
+        #         self.board.append(self.deck.river())
+        #         self.street = "showdown"
+        #         self._showdown()
+        # Start normal betting street.
+        for player in self.players:
+            player.street_bet = 0
+            player.to_act = (
+                not player.eliminated
+                and not player.folded
+                and not player.all_in
+            )
+        self.action_idx = self.btn_idx
+        if self.street == "flop":
+            self.board = self.deck.flop()
+        if self.street == "turn":
+            self.board.append(self.deck.turn())
+        if self.street == "river":
+            self.board.append(self.deck.river())
+        self.outstanding_bet = 0
+        self.toRaise = 0
 
     def _nextStreet(self):
         if self.street == "preflop":
@@ -121,10 +128,36 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             self.street = "showdown"
             self._showdown()
 
+    def _checkRunoutNeeded(self):
+        players_in_hand = [
+            player
+            for player in self.players
+            if not player.eliminated and not player.folded
+        ]
+
+        players_who_can_act = [
+            player
+            for player in players_in_hand
+            if not player.all_in
+        ]
+
+        return len(players_who_can_act) < 2
+
+    def _runoutBoard(self):
+        if self.street == "flop":
+            self.board = self.deck.flop()
+            self.street = "turn"
+        if self.street == "turn":
+            self.board.append(self.deck.turn())
+            self.street = "river"
+        if self.street == "river":
+            self.board.append(self.deck.river())
+            self.street = "showdown"
+            self._showdown()
+
     def _flop(self):
         self.street = "flop"
         self._startStreet()
-
 
     def _turn(self):
         self.street = "turn"
@@ -169,14 +202,6 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         self._commit(self.players[self.bb_idx], self.blinds["big"])
         self.outstanding_bet = self.blinds["big"]
 
-    def _streetOver(self):
-        """For all players, all have to either be eliminated, folded, all-in, or have finished action"""
-        res = True
-        for player in self.players:
-            if not player.eliminated and not player.folded and not player.all_in and player.to_act:
-                res = False
-        return res
-
     def _commit(self, player:Player, amount):
         if amount < 0: raise ValueError("Contribution must be non-negative")
         actual_amount = min(amount, player.stack)
@@ -220,17 +245,33 @@ class Game: #game abtraction: bets, action, tracking, deck, board
 
     def _raise(self, player:Player, amount):
         #amount is the player's total street bet after the raise
+        #external controller script determines if this method is available to a player
         self._validateAction(player)
-        if self.outstanding_bet == 0 or amount <= self.outstanding_bet: raise ValueError("Raising is invalid. Try all-in instead.")
-        if player.stack <= self.outstanding_bet: raise ValueError("Raising is invalid. Try all-in instead.")
-        if player.stack < self.outstanding_bet + self.toRaise:
+        target = min(amount, player.stack + player.street_bet) #target bet size cannot exceed a player's total chips
+        additional = target - player.street_bet
+        raise_size = target - self.outstanding_bet
+
+        #below code assumes external controller script has deemed a raise to be legal for the player
+
+        #CASE 1: player can only short all-in raise
+        #if player commits less than remaining stack, raise an error
+        if player.stack + player.street_bet < self.outstanding_bet + self.toRaise:
+            if additional < player.stack: raise ValueError("You must go all-in.")
             self._commit(player, player.stack)
-        elif player.stack >= self.outstanding_bet + self.toRaise:
-            if amount < self.outstanding_bet + self.toRaise: raise ValueError("Raising is invalid. Try all-in instead.")
-            raised = min(amount, player.stack)  - player.street_bet
-            self._commit(player, raised)
-            self.toRaise = raised
-            self.outstanding_bet = player.street_bet
+        #CASE 2: player can full-raise
+        else:
+            if raise_size < self.toRaise: raise ValueError("Invalid raise amount.")
+            self._commit(player, additional)
+            self.toRaise = raise_size
+
+
+        #if self.outstanding_bet == 0 or target < self.outstanding_bet: raise ValueError("Raising is invalid.")
+        #if target < self.outstanding_bet + self.toRaise: raise ValueError("Raising is invalid. Try all-in instead.")
+        #elif player.stack >= self.outstanding_bet + self.toRaise:
+            # if amount < self.outstanding_bet + self.toRaise: raise ValueError("Raising is invalid. Try all-in instead.")
+            # raised = min(amount, player.stack)  - player.street_bet
+            # self._commit(player, raised)
+        self.outstanding_bet = player.street_bet
         self.reopenAction(player)
         player.to_act = False
 
@@ -323,23 +364,30 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         self.action_idx = None
         self.pot = 0
 
-    def _checkHandActive(self) -> None:
+    def _checkHandActive(self) -> Player | None:
         """
-        Updates self.handEnded
+        Updates self.handEnded and returns the hand winner if found
         """
-        if self.street == "showdown": self.handEnded = True
+        if self.street == "showdown":
+            self.handEnded = True
+            return None
         actives = 0
+        handWinner = None
         for player in self.players:
             if not player.eliminated:
                 if not player.folded:
                     actives += 1
-        if actives > 1: return
-        else:
+                    handWinner = player
+        if actives == 1:
             self.handEnded = True
+            return handWinner
+        return None
 
     def _awardPot(self, handWinner):
         handWinner.stack += self.pot
         self.pot = 0
+        self.handEnded = True
+        self.action_idx = None
 
     def _checkGameOver(self):
         actives = 0
