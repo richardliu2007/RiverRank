@@ -41,6 +41,10 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         self.gameActive = True
         self.handEnded = False
 
+    def legalActions(self, player):
+        #returns all legal actions a player has as a set()
+        pass
+
     def _nextSeat(self, idx) -> int:
         for offset in range(1, len(self.players) + 1):
             index = (idx + offset) % len(self.players)
@@ -144,14 +148,16 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         return len(players_who_can_act) < 2
 
     def _runoutBoard(self):
-        if self.street == "flop":
+        if self.street == "preflop":
             self.board = self.deck.flop()
+            self.street = "flop"
+        if self.street == "flop":
+            self.board.append(self.deck.turn())
             self.street = "turn"
         if self.street == "turn":
-            self.board.append(self.deck.turn())
+            self.board.append(self.deck.river())
             self.street = "river"
         if self.street == "river":
-            self.board.append(self.deck.river())
             self.street = "showdown"
             self._showdown()
 
@@ -201,6 +207,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         self._commit(self.players[self.sb_idx], self.blinds["small"])
         self._commit(self.players[self.bb_idx], self.blinds["big"])
         self.outstanding_bet = self.blinds["big"]
+        self.toRaise = self.blinds["big"]
 
     def _commit(self, player:Player, amount):
         if amount < 0: raise ValueError("Contribution must be non-negative")
@@ -264,15 +271,14 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             self._commit(player, additional)
             self.toRaise = raise_size
 
-
         #if self.outstanding_bet == 0 or target < self.outstanding_bet: raise ValueError("Raising is invalid.")
         #if target < self.outstanding_bet + self.toRaise: raise ValueError("Raising is invalid. Try all-in instead.")
         #elif player.stack >= self.outstanding_bet + self.toRaise:
             # if amount < self.outstanding_bet + self.toRaise: raise ValueError("Raising is invalid. Try all-in instead.")
             # raised = min(amount, player.stack)  - player.street_bet
             # self._commit(player, raised)
-        self.outstanding_bet = player.street_bet
         self.reopenAction(player)
+        self.outstanding_bet = player.street_bet
         player.to_act = False
 
     # def _allIn(self, player:Player):
