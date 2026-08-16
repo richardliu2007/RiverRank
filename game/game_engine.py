@@ -70,7 +70,10 @@ class Game: #game abtraction: bets, action, tracking, deck, board
     def _nextSeat(self, idx) -> int:
         for offset in range(1, len(self.players) + 1):
             index = (idx + offset) % len(self.players)
-            if not self.players[index].eliminated and index != idx and not self.players[index].folded:
+            if (not self.players[index].eliminated
+                and index != idx
+                and not self.players[index].folded
+                and not self.players[index].all_in):
                 return index
         return None
 
@@ -99,30 +102,6 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         return res
     
     def _startStreet(self):
-        # Have this block be checked by the external controller.
-        # players_in_hand = [
-        #     player
-        #     for player in self.players
-        #     if not player.eliminated and not player.folded
-        # ]
-
-        # players_who_can_act = [
-        #     player
-        #     for player in players_in_hand
-        #     if not player.all_in
-        # ]
-        # if len(players_who_can_act) < 2:
-        #     if self.street == "flop":
-        #         self.board = self.deck.flop()
-        #         self.street = "turn"
-        #     if self.street == "turn":
-        #         self.board.append(self.deck.turn())
-        #         self.street = "river"
-        #     if self.street == "river":
-        #         self.board.append(self.deck.river())
-        #         self.street = "showdown"
-        #         self._showdown()
-        # Start normal betting street.
         for player in self.players:
             player.street_bet = 0
             player.to_act = (
@@ -293,27 +272,9 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             self._commit(player, additional)
             self.toRaise = raise_size
 
-        #if self.outstanding_bet == 0 or target < self.outstanding_bet: raise ValueError("Raising is invalid.")
-        #if target < self.outstanding_bet + self.toRaise: raise ValueError("Raising is invalid. Try all-in instead.")
-        #elif player.stack >= self.outstanding_bet + self.toRaise:
-            # if amount < self.outstanding_bet + self.toRaise: raise ValueError("Raising is invalid. Try all-in instead.")
-            # raised = min(amount, player.stack)  - player.street_bet
-            # self._commit(player, raised)
         self.reopenAction(player)
         self.outstanding_bet = player.street_bet
         player.to_act = False
-
-    # def _allIn(self, player:Player):
-    #     """
-    #     An all-in is legal when calling all-in, raising all-in, or open jamming
-    #     """
-    #     self._validateAction(player)
-    #     if self.outstanding_bet == 0:
-    #         self._bet(player, player.stack)
-    #     elif player.stack + player.street_bet > self.outstanding_bet:
-    #         self._raise(player, player.stack)
-    #     else:
-    #         self._call(player)
 
     def _call(self, player:Player):
         self._validateAction(player)
