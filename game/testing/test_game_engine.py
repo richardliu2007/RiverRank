@@ -427,6 +427,9 @@ def test_short_all_in_raise():
     game._nextAct()
     game._raise(game.players[1], 100)
     assert game.pot == 160
+    assert game.outstanding_bet == 100
+    assert game.toRaise == 60  # previous full raise increment remains
+    assert players[1].all_in is True
 
 def test_over_raise():
     players = [Player("A"), Player("B"), Player("C")]
@@ -440,3 +443,99 @@ def test_over_raise():
     game._nextAct()
     game._raise(game.players[1], 100000)
     assert game.pot == 360
+
+def test_preflop_minimum_raise_is_big_blind():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 2000)
+    game._startHand()
+    assert game.outstanding_bet == 20
+    assert game.toRaise == 20
+
+def test_BB_check_or_raise_when_preflop_limp_around():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 2000)
+    game.players[0].stack = 300
+    game.players[1].stack = 100
+    game.players[2].stack = 300
+    game._startHand()
+    game._call(game.players[0])
+    game._nextAct()
+    game._call(game.players[1])
+    actionsC = game.legalActions(game.players[2], False)
+    assert actionsC["call"] == False
+    assert actionsC["bet"] == False
+    assert actionsC["check"] == True
+    assert actionsC["raise"] == True
+
+def test_preflop_all_in_runout_deals_five_cards():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 2000)
+    game.street = "preflop"
+    game._runoutBoard()
+    assert len(game.board) == 5
+    assert game.street == "showdown"
+
+def test_cannot_reraise_if_acted_and_facing_short_all_in_raise():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 2000)
+    game.players[0].stack = 300
+    game.players[1].stack = 100
+    game.players[2].stack = 300
+    game.street = "flop"
+    game.action_idx = 0
+    game._bet(game.players[0], 60)
+    game._nextAct()
+    game._raise(game.players[1], 100)
+    game._nextAct()
+    game._call(game.players[2])
+    game._nextAct()
+    actionsA = game.legalActions(game.players[0], True, True)
+    assert actionsA["raise"] == False
+
+def test_first_player_to_act_on_street_actions():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 2000)
+    game.players[0].stack = 300
+    game.players[1].stack = 100
+    game.players[2].stack = 300
+    game.street = "flop"
+    game._startStreet()
+    actionsB = game.legalActions(game.players[1], False)
+    assert actionsB["check"] == True
+    assert actionsB["bet"] == True
+    assert actionsB["call"] == False
+    assert actionsB["raise"] == False
+
+def test_second_player_to_act_on_street_after_bet_actions():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 2000)
+    game.players[0].stack = 300
+    game.players[1].stack = 100
+    game.players[2].stack = 300
+    game.street = "flop"
+    game._startStreet()
+    game.action_idx = 0
+    game._bet(game.players[0], 50)
+    actionsB = game.legalActions(game.players[1], False)
+    assert actionsB["check"] == False
+    assert actionsB["bet"] == False
+    assert actionsB["call"] == True
+    assert actionsB["raise"] == True 
+
+def test_second_player_to_act_on_street_after_bet_actions_if_cannot_raise():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 2000)
+    game.players[0].stack = 300
+    game.players[1].stack = 100
+    game.players[2].stack = 300
+    game.street = "flop"
+    game._startStreet()
+    game.action_idx = 0
+    game._bet(game.players[0], 200)
+    actionsB = game.legalActions(game.players[1], False)
+    assert actionsB["check"] == False
+    assert actionsB["bet"] == False
+    assert actionsB["call"] == True
+    assert actionsB["raise"] == False
+
+
