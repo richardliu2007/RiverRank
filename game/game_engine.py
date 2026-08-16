@@ -41,9 +41,31 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         self.gameActive = True
         self.handEnded = False
 
-    def legalActions(self, player):
-        #returns all legal actions a player has as a set()
-        pass
+    def legalActions(self, player:Player, actedPreviouslyOnStreet, shortRaise=False):
+        #Only call this function on players that have action OR when reopening action after a bet/raise
+        actions = {"call": False, "check": False, "bet": False, "raise": False, "fold": True}
+        #2 cases: no outstanding bet and some outstanding bet
+        if self.outstanding_bet == 0:
+            if player.stack > 0:
+                actions["check"] = True
+                actions["bet"] = True
+        else:
+            if player.stack > 0: #and player.street_bet < self.outstanding_bet:
+                amount_to_call = self.outstanding_bet - player.street_bet
+                #this is only possible for BB preflop limp around
+                if amount_to_call == 0:
+                    actions["check"] = True
+                else:
+                    # call/fold, and possibly raise
+                    actions["call"] = True
+
+                #Give player raise option conditionally
+                if player.stack + player.street_bet > self.outstanding_bet:
+                    if not actedPreviouslyOnStreet or not shortRaise:
+                        actions["raise"] = True
+        return actions
+            
+
 
     def _nextSeat(self, idx) -> int:
         for offset in range(1, len(self.players) + 1):
