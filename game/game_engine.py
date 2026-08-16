@@ -70,7 +70,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
     def _nextSeat(self, idx) -> int:
         for offset in range(1, len(self.players) + 1):
             index = (idx + offset) % len(self.players)
-            if not self.players[index].eliminated and index != idx:
+            if not self.players[index].eliminated and index != idx and not self.players[index].folded:
                 return index
         return None
 
@@ -130,13 +130,13 @@ class Game: #game abtraction: bets, action, tracking, deck, board
                 and not player.folded
                 and not player.all_in
             )
-        self.action_idx = self.btn_idx
         if self.street == "flop":
             self.board = self.deck.flop()
         if self.street == "turn":
             self.board.append(self.deck.turn())
         if self.street == "river":
             self.board.append(self.deck.river())
+        self.action_idx = self._nextSeat(self.btn_idx)
         self.outstanding_bet = 0
         self.toRaise = 0
 
