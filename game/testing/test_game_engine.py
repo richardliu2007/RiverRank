@@ -448,6 +448,8 @@ def test_preflop_minimum_raise_is_big_blind():
     players = [Player("A"), Player("B"), Player("C")]
     game = Game(0, 1, 2, players, 2000)
     game._startHand()
+    with pytest.raises(ValueError):
+        game._raise(game.players[game.action_idx], 30)
     assert game.outstanding_bet == 20
     assert game.toRaise == 20
 
@@ -466,8 +468,9 @@ def test_BB_check_or_raise_when_preflop_limp_around():
     assert actionsC["bet"] == False
     assert actionsC["check"] == True
     assert actionsC["raise"] == True
+    assert actionsC["fold"] is True
 
-def test_preflop_all_in_runout_deals_five_cards():
+def test_preflop_runout_deals_five_cards():
     players = [Player("A"), Player("B"), Player("C")]
     game = Game(0, 1, 2, players, 2000)
     game.street = "preflop"
@@ -500,11 +503,12 @@ def test_first_player_to_act_on_street_actions():
     game.players[2].stack = 300
     game.street = "flop"
     game._startStreet()
-    actionsB = game.legalActions(game.players[1], False)
-    assert actionsB["check"] == True
-    assert actionsB["bet"] == True
-    assert actionsB["call"] == False
-    assert actionsB["raise"] == False
+    actionsA = game.legalActions(game.players[0], False)
+    assert game.action_idx == 0
+    assert actionsA["check"] == True
+    assert actionsA["bet"] == True
+    assert actionsA["call"] == False
+    assert actionsA["raise"] == False
 
 def test_second_player_to_act_on_street_after_bet_actions():
     players = [Player("A"), Player("B"), Player("C")]
@@ -537,5 +541,61 @@ def test_second_player_to_act_on_street_after_bet_actions_if_cannot_raise():
     assert actionsB["bet"] == False
     assert actionsB["call"] == True
     assert actionsB["raise"] == False
+
+def test_heads_up_button_is_small_blind():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 2000)
+    game.players[0].stack = 300
+    game.players[1].stack = 100
+    game.players[2].stack = 0
+    game.players[2].eliminated = True
+    game._startHand()
+    assert game.btn_idx == game.sb_idx
+
+
+def test_heads_up_other_player_is_big_blind():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 2000)
+    game.players[0].stack = 0
+    game.players[1].stack = 100
+    game.players[2].stack = 200
+    game.players[0].eliminated = True
+    game._startHand()
+    assert game.btn_idx == 1
+    assert game.bb_idx == 2
+    assert game.sb_idx == 1
+
+def test_heads_up_button_acts_first_preflop():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 2000)
+    game.players[0].stack = 0
+    game.players[1].stack = 100
+    game.players[2].stack = 200
+    game.players[0].eliminated = True
+    game._startHand()
+    assert game.action_idx == game.btn_idx
+
+def test_heads_up_big_blind_acts_first_postflop():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 2000)
+    game.players[0].stack = 0
+    game.players[1].stack = 100
+    game.players[2].stack = 200
+    game.players[0].eliminated = True
+    game._startHand()
+    game._flop()
+    assert game.action_idx == game.bb_idx
+
+def test_heads_up_button_alternates_each_hand():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 2000)
+    game.players[0].stack = 0
+    game.players[1].stack = 100
+    game.players[2].stack = 200
+    game.players[0].eliminated = True
+    game._startHand()
+    assert game.btn_idx == 1
+    game._startHand()
+    assert game.btn_idx == 2
 
 
