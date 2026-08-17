@@ -64,8 +64,6 @@ class Game: #game abtraction: bets, action, tracking, deck, board
                     if not actedPreviouslyOnStreet or not shortRaise:
                         actions["raise"] = True
         return actions
-            
-
 
     def _nextSeat(self, idx) -> int:
         for offset in range(1, len(self.players) + 1):
@@ -190,6 +188,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             player.all_in = False
             player.to_act = True
 
+    #UPDATE FOR HEADS-UP
     def _startHand(self):
         """
         Reset game state, update active players, reset deck, move blinds, reset board
@@ -199,10 +198,20 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         if isWinner: return isWinner
         self.resetHand()
         self.deck.newRound()
+        players_in_hand = [
+                    player
+                    for player in self.players
+                    if not player.eliminated
+                ]
         self.btn_idx = self._nextSeat(self.btn_idx)
-        self.sb_idx = self._nextSeat(self.btn_idx)
-        self.bb_idx = self._nextSeat(self.sb_idx)
-        self.action_idx = self._nextSeat(self.bb_idx)
+        if len(players_in_hand) == 2:
+            self.sb_idx = self.btn_idx
+            self.bb_idx = self._nextSeat(self.sb_idx)
+            self.action_idx = self.btn_idx
+        else:
+            self.sb_idx = self._nextSeat(self.btn_idx)
+            self.bb_idx = self._nextSeat(self.sb_idx)
+            self.action_idx = self._nextSeat(self.bb_idx)
         for player in self.players:
             if not player.eliminated: player.cards = self.deck.deal()
         self._commit(self.players[self.sb_idx], self.blinds["small"])
