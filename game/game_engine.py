@@ -17,6 +17,10 @@ class Player: #player abtraction
         return not self.eliminated and not self.folded
 
 class Game: #game abtraction: bets, action, tracking, deck, board
+    """
+    Defines all variables to track in a game
+    Defines all methods that are necessary to play a game
+    """
     def __init__(self, sb_idx:int, bb_idx:int, btn_idx:int, players:list[Player], starting_stack:int):
         if len(players) < 2: raise ValueError("Not enough players.")
         for index in (sb_idx, bb_idx, btn_idx):
@@ -342,7 +346,6 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             raise RuntimeError("Pot does not match player contributions")
         return pots
 
-
     def _showdown(self):
         """
         General case: compare hands, give pot to winner, chop if needed
@@ -395,6 +398,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
                 actives += 1
                 candidateWinner = player
         if actives == 1:
+            self.gameActive = False
             return candidateWinner
         return None
 
