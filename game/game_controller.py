@@ -1,4 +1,9 @@
 #Responsible for running/controlling a game
+"""
+TO-DO AS OF 08/21/2026:
+Enforce legal action from user
+Add proper showdown console output
+"""
 from game.game_engine import Game, Player
 import random
 
@@ -49,7 +54,12 @@ def displayPlayerInfo(player:Player):
     print(f"\nYour stack: {player.stack}\nYour cards: {formattedCards}\nYour total bet this hand: {player.total_bet}\nYour total bet this street: {player.street_bet}")
 
 
-    
+def promptForInteger(prompt):
+    while True:
+        try:
+            return int(input(prompt))
+        except ValueError:
+            print("Please enter an integer.")    
 
 def main():
     #Initiate game object with 5 bots and the player
@@ -62,7 +72,13 @@ def main():
     #IGNORE EDGE CASES FOR NOW FOR THE SAKE OF SIMPLICITY.
 
     while game.gameActive:
-        game._startHand()
+        if user.eliminated:
+            print("You have been eliminated.")
+            return
+        gameWinner = game._startHand()
+        if gameWinner:
+            print(f"{gameWinner.name} has won the game!")
+            return
         handCount += 1
         print(f"""
             ====================================================
@@ -88,12 +104,22 @@ def main():
                     if action == "call":
                         game._call(user)
                     if action == "bet":
-                        amount = input("Enter amount: ")
-                        amount = int(amount)
+                        amount = promptForInteger("Enter amount: ")
+                        while(amount < game.blinds["big"]):
+                            amount = promptForInteger("Try another amount: ")
                         game._bet(user, amount)
                     if action == "raise":
-                        amount = input("Enter amount: ")
-                        amount = int(amount)
+                        amount = promptForInteger("Enter amount to raise to: ")
+                        amount = min(amount, user.stack + user.street_bet)
+                        while True:
+                            if amount < game.outstanding_bet + game.toRaise:
+                                if amount == user.street_bet + user.stack:
+                                    break
+                                else:
+                                    amount = promptForInteger("Raise amount too low: ")
+                                    amount = min(amount, user.stack + user.street_bet)
+                            else:
+                                break
                         game._raise(user, amount)
                     game._nextAct()
                     print("")
@@ -106,8 +132,9 @@ def main():
                         game._fold(actor)
                         print(f"{actor.name} folds.")
                     if action == "call":
+                        print(f"{actor.name} calls {min(game.outstanding_bet - actor.street_bet, actor.stack)}.")
                         game._call(actor)
-                        print(f"{actor.name} calls.")
+    
                     if action == "bet":
                         amount = game.blinds["big"]
                         game._bet(actor, amount)
@@ -115,7 +142,7 @@ def main():
                     if action == "raise":
                         amount = game.outstanding_bet + game.toRaise
                         game._raise(actor, amount)
-                        print(f"{actor.name} raises to {amount}.")
+                        print(f"{actor.name} raises to {actor.street_bet}.")
                     game._nextAct()
                 candidate = game._checkHandActive()
                 if candidate:
@@ -125,7 +152,15 @@ def main():
                     break
             if game.handEnded: break
             if game._checkRunoutNeeded():
+                print("All in runout will begin.")
                 game._runoutBoard()
+
+                displayTableInfo(game)
+                for player in game.players:
+                    if not player.eliminated and not player.folded:
+                        formattedCards = " ".join(cardFormatter(card) for card in player.cards)
+                        print(f"{player.name} hand: {formattedCards}")
+                game._showdown()
             elif game.street == "river":
                 print("""
                 ====================================================
