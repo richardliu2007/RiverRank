@@ -162,7 +162,6 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             self.street = "river"
         if self.street == "river":
             self.street = "showdown"
-            self._showdown()
 
     def _flop(self):
         self.street = "flop"
