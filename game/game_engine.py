@@ -302,6 +302,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         if player.stack != 0: raise ValueError("Player still has chips")
         player.eliminated = True
 
+    #08/25 return pot number for identification
     def buildPots(self):
         levels = sorted({
             player.total_bet
@@ -315,7 +316,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             for index, player in enumerate(self.players)
             if not player.folded and not player.eliminated
         }
-        for level in levels:
+        for potNum, level in enumerate(levels):
             contributors = [
                 player
                 for player in self.players
@@ -339,13 +340,14 @@ class Game: #game abtraction: bets, action, tracking, deck, board
                 for index in eligible_indexes
                 if hand_values[index] == best_hand
             ]
-            pots.append((pot_amount, winners))
+            pots.append((pot_amount, winners, potNum))
             previous_level = level
-        if sum(amount for amount, _ in pots) != self.pot:
+        if sum(amount for amount, winner, potNum in pots) != self.pot:
             raise RuntimeError("Pot does not match player contributions")
         return pots
 
-    def _showdown(self):
+    #08/25 now returns pots and winners instead of None
+    def _showdown(self) -> list[(int, Player, int)]:
         """
         General case: compare hands, give pot to winner, chop if needed
         All-in case: compare hands, side pot calculation
@@ -354,15 +356,20 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         if len(self.board) != 5:
             raise RuntimeError("Showdown requires five board cards")
         pots = self.buildPots()
+        res = []
         for pot in pots:
             share, remainder = divmod(pot[0], len(pot[1]))
             for index in pot[1]:
                 self.players[index].stack += share
+                res.append((pot[0], pot[2], self.players[index].name, share)) #return tuples of the form (potSize, potNum, Player, amountWon)
             for index in sorted(pot[1])[:remainder]:
                 self.players[index].stack += 1
+                res.append((pot[0], pot[2], self.players[index].name, 1))
+
         self.handEnded = True
         self.action_idx = None
         self.pot = 0
+        return res
 
     def _checkHandActive(self) -> Player | None:
         """
