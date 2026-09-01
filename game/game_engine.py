@@ -312,7 +312,6 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         player.eliminated = True
 
     def buildPots(self):
-    #TO-DO 9/1: pot building should ignore folded players at showdown
         potContributions = [0]
         seen = {0}
         #potContributions stores all per-player contributions for a pot
@@ -355,7 +354,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             raise RuntimeError("Pot does not match player contributions")
         return pots
 
-    def _showdown(self) -> list[(int, int, Player, int)]:
+    def _showdown(self) -> list[(int, int, Player, int, tuple)]:
         """
         General case: compare hands, give pot to winner, chop if needed
         All-in case: compare hands, side pot calculation
@@ -369,7 +368,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             share, remainder = divmod(pot[0], len(pot[1]))
             for index in pot[1]:
                 self.players[index].stack += share
-                res.append((pot[0], pot[2], self.players[index].name, share)) #return tuples of the form (potSize, potNum, Player, amountWon)
+                res.append((pot[0], pot[2], self.players[index].name, share, pot[3])) #return tuples of the form (potSize, potNum, Player, amountWon)
             for index in sorted(pot[1])[:remainder]:
                 self.players[index].stack += 1
                 res.append((pot[0], pot[2], self.players[index].name, 1))
