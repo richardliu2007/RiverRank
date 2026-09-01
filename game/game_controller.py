@@ -89,10 +89,12 @@ def main():
             if game.street == "preflop": displayTableInfo(game)
             while not game._streetOver(): #could we also equivalently check if game.action_idx is not None?
                 actor = game.players[game.action_idx]
+                #acted = actor.has_acted
                 actions = game.legalActions(actor, False)
                 availableActions = [action for action, allowed in actions.items() if allowed]
                 if actor is user:
                     displayPlayerInfo(user)
+                    print("Ctrl+C to exit.")
                     if "call" in availableActions: print(f"Amount to call: {game.outstanding_bet-user.street_bet}")
                     action = input(f"Select an action: ({', '.join(availableActions)}): ").strip().lower()
                     while action not in availableActions: 
@@ -125,6 +127,8 @@ def main():
                     print("")
                 else:
                     action = random.choice(availableActions)
+                    while actor.street_bet == game.outstanding_bet and action == "fold":
+                        action = random.choice(availableActions)
                     if action == "check":
                         game._check(actor)
                         print(f"{actor.name} checks.")
@@ -134,7 +138,6 @@ def main():
                     if action == "call":
                         print(f"{actor.name} calls {min(game.outstanding_bet - actor.street_bet, actor.stack)}.")
                         game._call(actor)
-    
                     if action == "bet":
                         amount = game.blinds["big"]
                         game._bet(actor, amount)
@@ -160,7 +163,10 @@ def main():
                     if not player.eliminated and not player.folded:
                         formattedCards = " ".join(cardFormatter(card) for card in player.cards)
                         print(f"{player.name} hand: {formattedCards}")
-                game._showdown()
+                showdownRes = game._showdown()
+                for res in showdownRes:
+                    print(f"{res[2]} wins {res[3]} from {"main" if res[1] == 0 else "side"} pot {res[1]} of size {res[0]}")
+
             elif game.street == "river":
                 print("""
                 ====================================================
@@ -172,7 +178,10 @@ def main():
                     if not player.eliminated and not player.folded:
                         formattedCards = " ".join(cardFormatter(card) for card in player.cards)
                         print(f"{player.name} hand: {formattedCards}")
-                game._showdown()
+                showdownRes = game._showdown()
+                for res in showdownRes:
+                    print(f"{res[2]} wins {res[3]} from {"main" if res[1] == 0 else "side"} pot {res[1]} of size {res[0]}")
+                
             else:
                 game._nextStreet()
                 displayTableInfo(game)
@@ -181,4 +190,7 @@ def main():
             if player.stack == 0: game._eliminate(player)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("Game exited.")

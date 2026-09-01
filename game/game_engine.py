@@ -13,6 +13,7 @@ class Player: #player abtraction
     all_in:bool = False
     folded:bool = False
     to_act:bool = True
+    has_acted:bool = False
     def in_hand(self):
         return not self.eliminated and not self.folded
 
@@ -102,7 +103,8 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             if not player.eliminated and not player.folded and not player.all_in and player.to_act:
                 res = False
         return res
-    
+
+    #update Player attribute hasActed here
     def _startStreet(self):
         for player in self.players:
             player.street_bet = 0
@@ -175,6 +177,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         self.street = "river"
         self._startStreet()
 
+    #update Player attribute hasActed here
     def resetHand(self):
         """Reset attributes to default"""
         self.outstanding_bet = 0
@@ -185,6 +188,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         self.handEnded = False
         for player in self.players:
             player.cards = []
+            player.has_acted = False
             player.total_bet = 0
             player.street_bet = 0
             player.folded = False
@@ -240,10 +244,12 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         self._validateAction(player)
         player.folded = True
         player.to_act = False
-        
+        player.has_acted = True
+
     def _check(self, player:Player):
         self._validateAction(player)
         player.to_act = False
+        player.has_acted = True
 
     def reopenAction(self, player):
         for p in self.players:
@@ -262,6 +268,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         player.to_act = False
         self.outstanding_bet += player.street_bet
         self.toRaise = player.street_bet
+        player.has_acted = True
 
     def _raise(self, player:Player, amount):
         #amount is the player's total street bet after the raise
@@ -287,6 +294,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         self.reopenAction(player)
         self.outstanding_bet = player.street_bet
         player.to_act = False
+        player.has_acted = True
 
     def _call(self, player:Player):
         self._validateAction(player)
@@ -295,6 +303,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         if callAmount <= 0: raise ValueError("Call illegal. Try check instead.")
         self._commit(player, callAmount)
         player.to_act = False
+        player.has_acted = True
 
 
     def _eliminate(self, player:Player):
@@ -302,7 +311,6 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         if player.stack != 0: raise ValueError("Player still has chips")
         player.eliminated = True
 
-    #08/25 return pot number for identification
     def buildPots(self):
         levels = sorted({
             player.total_bet
@@ -346,8 +354,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             raise RuntimeError("Pot does not match player contributions")
         return pots
 
-    #08/25 now returns pots and winners instead of None
-    def _showdown(self) -> list[(int, Player, int)]:
+    def _showdown(self) -> list[(int, int, Player, int)]:
         """
         General case: compare hands, give pot to winner, chop if needed
         All-in case: compare hands, side pot calculation
