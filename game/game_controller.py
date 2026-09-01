@@ -88,8 +88,6 @@ def main():
     game = Game(0,1,2, players, 2000)
     handCount = 0
 
-    #IGNORE EDGE CASES FOR NOW FOR THE SAKE OF SIMPLICITY.
-
     while game.gameActive:
         if user.eliminated:
             print("You have been eliminated.")
