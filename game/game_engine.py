@@ -368,10 +368,10 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             share, remainder = divmod(pot[0], len(pot[1]))
             for index in pot[1]:
                 self.players[index].stack += share
-                res.append((pot[0], pot[2], self.players[index].name, share, pot[3])) #return tuples of the form (potSize, potNum, Player, amountWon)
+                res.append((pot[0], pot[2], self.players[index].name, share, pot[3])) #return tuples of the form (potSize, potNum, Player, amountWon, handStrength)
             for index in sorted(pot[1])[:remainder]:
                 self.players[index].stack += 1
-                res.append((pot[0], pot[2], self.players[index].name, 1))
+                res.append((pot[0], pot[2], self.players[index].name, 1, pot[3]))
 
         self.handEnded = True
         self.action_idx = None
