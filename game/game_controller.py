@@ -94,7 +94,6 @@ def main():
                 availableActions = [action for action, allowed in actions.items() if allowed]
                 if actor is user:
                     displayPlayerInfo(user)
-                    print("Ctrl+C to exit.")
                     if "call" in availableActions: print(f"Amount to call: {game.outstanding_bet-user.street_bet}")
                     action = input(f"Select an action: ({', '.join(availableActions)}): ").strip().lower()
                     while action not in availableActions: 
@@ -168,11 +167,7 @@ def main():
                     print(f"{res[2]} wins {res[3]} from {"main" if res[1] == 0 else "side"} pot {res[1]} of size {res[0]}")
 
             elif game.street == "river":
-                print("""
-                ====================================================
-                               BOARD BEFORE SHOWDOWN
-                ====================================================
-                """)
+                game.street = "showdown"
                 displayTableInfo(game)
                 for player in game.players:
                     if not player.eliminated and not player.folded:
@@ -180,7 +175,7 @@ def main():
                         print(f"{player.name} hand: {formattedCards}")
                 showdownRes = game._showdown()
                 for res in showdownRes:
-                    print(f"{res[2]} wins {res[3]} from {"main" if res[1] == 0 else "side"} pot {res[1]} of size {res[0]}")
+                    print(f"{res[2]} wins {res[3]} from {"main" if res[1] == 0 else "side"} pot{" " + str(res[1]) if res[1] != 0 else ""} of size {res[0]}")
                 
             else:
                 game._nextStreet()
@@ -193,4 +188,4 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("Game exited.")
+        print("\nGame exited.")
