@@ -1,8 +1,7 @@
 #Responsible for running/controlling a game
 """
-TO-DO AS OF 08/21/2026:
-Enforce legal action from user
-Add proper showdown console output
+TO-DO AS OF 09/01/2026:
+Add separate console output for overbets at showdown: "Excess bet of (amount) returned to (player)" 
 """
 from game.game_engine import Game, Player
 import random
@@ -45,13 +44,33 @@ def displayTableInfo(game:Game):
             position = "SB : "
         if index == game.btn_idx:
             position = "BTN: "   
-        print(f"{position} {player.name} | Stack: {player.stack} | Bet: {player.street_bet} | Status: {status}")
+        print(f"{position} {player.name} | Stack: {player.stack} | Total bet: {player.total_bet} |Street bet: {player.street_bet} | Status: {status}")
     print("")
 
 def displayPlayerInfo(player:Player):
     #displays player info
     formattedCards = " ".join(cardFormatter(card) for card in player.cards)
     print(f"\nYour stack: {player.stack}\nYour cards: {formattedCards}\nYour total bet this hand: {player.total_bet}\nYour total bet this street: {player.street_bet}")
+
+handMapper = {
+    1: "high card",
+    2: "pair",
+    3: "two pair",
+    4: "trips",
+    5: "straight",
+    6: "flush",
+    7: "full house",
+    8: "four of a kind",
+    9: "straight flush"
+}
+def displayShowdownInfo(game:Game):
+    for player in game.players:
+        if not player.eliminated and not player.folded:
+            formattedCards = " ".join(cardFormatter(card) for card in player.cards)
+            print(f"{player.name} hand: {formattedCards}")
+    showdownRes = game._showdown()
+    for res in showdownRes:
+        print(f"{res[2]} wins {res[3]} from {"main" if res[1] == 0 else "side"} pot{" " + str(res[1]) if res[1] != 0 else ""} of size {res[0]} with: {handMapper[res[4][0]]}")
 
 
 def promptForInteger(prompt):
@@ -87,7 +106,7 @@ def main():
             """)
         while not game.handEnded:
             if game.street == "preflop": displayTableInfo(game)
-            while not game._streetOver(): #could we also equivalently check if game.action_idx is not None?
+            while not game._streetOver():
                 actor = game.players[game.action_idx]
                 #acted = actor.has_acted
                 actions = game.legalActions(actor, False)
@@ -156,26 +175,13 @@ def main():
             if game._checkRunoutNeeded():
                 print("All in runout will begin.")
                 game._runoutBoard()
-
                 displayTableInfo(game)
-                for player in game.players:
-                    if not player.eliminated and not player.folded:
-                        formattedCards = " ".join(cardFormatter(card) for card in player.cards)
-                        print(f"{player.name} hand: {formattedCards}")
-                showdownRes = game._showdown()
-                for res in showdownRes:
-                    print(f"{res[2]} wins {res[3]} from {"main" if res[1] == 0 else "side"} pot {res[1]} of size {res[0]}")
+                displayShowdownInfo(game)
 
             elif game.street == "river":
                 game.street = "showdown"
                 displayTableInfo(game)
-                for player in game.players:
-                    if not player.eliminated and not player.folded:
-                        formattedCards = " ".join(cardFormatter(card) for card in player.cards)
-                        print(f"{player.name} hand: {formattedCards}")
-                showdownRes = game._showdown()
-                for res in showdownRes:
-                    print(f"{res[2]} wins {res[3]} from {"main" if res[1] == 0 else "side"} pot{" " + str(res[1]) if res[1] != 0 else ""} of size {res[0]}")
+                displayShowdownInfo(game)
                 
             else:
                 game._nextStreet()
