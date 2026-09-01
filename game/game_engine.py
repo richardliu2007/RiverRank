@@ -312,30 +312,32 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         player.eliminated = True
 
     def buildPots(self):
-        levels = sorted({
-            player.total_bet
-            for player in self.players
-            if player.total_bet > 0
-        })
-        previous_level = 0
+    #TO-DO 9/1: pot building should ignore folded players at showdown
+        potContributions = [0]
+        seen = {0}
+        #potContributions stores all per-player contributions for a pot
+        for player in self.players:
+            #we have a distinct pot when a player that is active at showdown has a unique total bet size
+            if not player.folded and not player.eliminated and player.total_bet not in seen:
+                potContributions.append(player.total_bet)
+                seen.add(player.total_bet)
+        potContributions.sort()
         pots = []
         hand_values = {
             index: evaluate_7(self.board + player.cards)
             for index, player in enumerate(self.players)
             if not player.folded and not player.eliminated
         }
-        for potNum, level in enumerate(levels):
-            contributors = [
-                player
-                for player in self.players
-                if player.total_bet >= level
-            ]
-            pot_amount = (level - previous_level) * len(contributors)
+        #each player can at most contribute their total bet - previous pot amount to the current pot
+        for potNum in range(1, len(potContributions)):
+            pot_amount = 0
+            for player in self.players:
+                pot_amount += max(0, min(player.total_bet - potContributions[potNum-1], potContributions[potNum] - potContributions[potNum-1]))
             eligible_indexes = [
                 index
                 for index, player in enumerate(self.players)
                 if (
-                    player.total_bet >= level
+                    player.total_bet >= potContributions[potNum]
                     and not player.folded
                     and not player.eliminated
                 )
@@ -348,9 +350,8 @@ class Game: #game abtraction: bets, action, tracking, deck, board
                 for index in eligible_indexes
                 if hand_values[index] == best_hand
             ]
-            pots.append((pot_amount, winners, potNum))
-            previous_level = level
-        if sum(amount for amount, winner, potNum in pots) != self.pot:
+            pots.append((pot_amount, winners, potNum - 1, best_hand))
+        if sum(amount for amount, winner, potNum, best_hand in pots) != self.pot:
             raise RuntimeError("Pot does not match player contributions")
         return pots
 

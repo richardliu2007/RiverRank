@@ -317,6 +317,60 @@ def test_multiple_side_pots():
     assert game.players[2].stack == 500
     assert game.pot == 0
 
+def test_build_pots_ignores_folded_only_contribution_levels():
+    players = [
+        Player("A"),
+        Player("B"),
+        Player("C"),
+        Player("Folded D"),
+        Player("Folded E"),
+    ]
+    game = Game(0, 1, 2, players, 2000)
+    game.board = [(3, "s"), (3, "h"), (3, "d"), (2, "s"), (6, "c")]
+    players[0].cards = [(3, "c"), (14, "c")]
+    players[1].cards = [(14, "d"), (14, "s")]
+    players[2].cards = [(13, "c"), (13, "d")]
+    players[3].cards = [(12, "c"), (12, "d")]
+    players[4].cards = [(11, "c"), (11, "d")]
+
+    game._commit(players[0], 50)
+    game._commit(players[1], 150)
+    game._commit(players[2], 250)
+    game._commit(players[3], 100)
+    game._commit(players[4], 200)
+    players[3].folded = True
+    players[4].folded = True
+
+    stacks_before = [player.stack for player in players]
+    pots = game.buildPots()
+
+    assert pots == [
+        (250, [0], 0, (8, 3, 14)),
+        (350, [1], 1, (7, 3, 14)),
+        (150, [2], 2, (7, 3, 13)),
+    ]
+    assert sum(pot_amount for pot_amount, _, _, _ in pots) == game.pot == 750
+    assert [player.stack for player in players] == stacks_before
+
+
+def test_build_pots_counts_folded_contribution_below_first_active_level():
+    players = [Player("A"), Player("B"), Player("Folded")]
+    game = Game(0, 1, 2, players, 2000)
+    game.board = [(3, "s"), (3, "h"), (3, "d"), (2, "s"), (6, "c")]
+    players[0].cards = [(3, "c"), (14, "c")]
+    players[1].cards = [(14, "d"), (14, "s")]
+    players[2].cards = [(13, "c"), (13, "d")]
+
+    game._commit(players[0], 100)
+    game._commit(players[1], 200)
+    game._commit(players[2], 40)
+    players[2].folded = True
+
+    assert game.buildPots() == [
+        (240, [0], 0, (8, 3, 14)),
+        (100, [1], 1, (7, 3, 14)),
+    ]
+
 def test_chop_pot():
     players = [Player("A"), Player("B"), Player("C")]
     game = Game(0, 1, 2, players, 2000)
