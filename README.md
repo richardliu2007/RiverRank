@@ -23,7 +23,7 @@ The ranked ladder will offer a tangible measurement of progress and achievement 
 
 # Status
 
-RiverRank v0.1 is deployed. The current build provides a local, terminal-playable no-limit Texas Hold'em game with one human player and five basic automated opponents. The deck, hand evaluator, and core engine have automated test coverage, and the game controller has basic integration tests.
+RiverRank v0.1 provides a local, terminal-playable no-limit Texas Hold'em game with one human player and five basic automated opponents. The deck, hand evaluator, and core engine have automated test coverage, and the game controller has basic integration tests.
 
 Networking, user accounts, ranked matchmaking, persistence, and the web interface are in development.
 
