@@ -652,4 +652,78 @@ def test_heads_up_button_alternates_each_hand():
     game._startHand()
     assert game.btn_idx == 2
 
+def create_heads_up_game(sb_stack, bb_stack):
+    players = [Player("SB"), Player("BB")]
+    game = Game(0, 1, 1, players, 2_000)
 
+    # _startHand() advances the button from seat 1 to seat 0,
+    # making seat 0 the button/small blind.
+    players[0].stack = sb_stack
+    players[1].stack = bb_stack
+    game._startHand()
+
+    assert game.sb_idx == 0
+    assert game.bb_idx == 1
+    return game, players
+
+def test_heads_up_short_small_blind_is_skipped_as_actor():
+    game, players = create_heads_up_game(sb_stack=5, bb_stack=100)
+
+    assert players[0].all_in is True
+    assert players[0].street_bet == 5
+    assert game.action_idx == game.bb_idx
+    assert players[game.action_idx].all_in is False
+
+def test_heads_up_short_big_blind_sets_actual_outstanding_bet():
+    game, players = create_heads_up_game(sb_stack=100, bb_stack=15)
+
+    small_blind = players[game.sb_idx]
+    big_blind = players[game.bb_idx]
+
+    assert small_blind.street_bet == 10
+    assert big_blind.street_bet == 15
+    assert big_blind.all_in is True
+    assert game.outstanding_bet == 15
+    assert game.action_idx == game.sb_idx
+
+    actions = game.legalActions(small_blind, False)
+
+    assert actions["call"] is True
+    assert game.outstanding_bet - small_blind.street_bet == 5
+
+def test_big_blind_shorter_than_small_blind_requires_no_call():
+    game, players = create_heads_up_game(sb_stack=100, bb_stack=5)
+
+    small_blind = players[game.sb_idx]
+    big_blind = players[game.bb_idx]
+
+    assert small_blind.street_bet == 10
+    assert big_blind.street_bet == 5
+    assert big_blind.all_in is True
+    assert game.outstanding_bet == 10
+
+    actions = game.legalActions(small_blind, False)
+
+    assert actions["call"] is False
+    assert actions["check"] is True
+    assert game._checkRunoutNeeded() is True
+
+def test_runout_does_not_skip_remaining_call_decision():
+    game, players = create_heads_up_game(sb_stack=100, bb_stack=15)
+
+    actor = players[game.action_idx]
+    actions = game.legalActions(actor, False)
+    available_actions = [
+        action
+        for action, allowed in actions.items()
+        if allowed
+    ]
+
+    assert game._checkRunoutNeeded() is True
+    assert "call" in available_actions
+
+    should_run_out = (
+        "call" not in available_actions
+        and game._checkRunoutNeeded()
+    )
+    assert should_run_out is False
