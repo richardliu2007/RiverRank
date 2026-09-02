@@ -223,8 +223,10 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             if not player.eliminated: player.cards = self.deck.deal()
         self._commit(self.players[self.sb_idx], self.blinds["small"])
         self._commit(self.players[self.bb_idx], self.blinds["big"])
-        self.outstanding_bet = self.blinds["big"]
+        self.outstanding_bet = max(self.players[self.sb_idx].total_bet, self.players[self.bb_idx].total_bet)
         self.toRaise = self.blinds["big"]
+        if self.action_idx == self.sb_idx and self.players[self.sb_idx].stack == 0:
+            self._nextAct()
 
     def _commit(self, player:Player, amount):
         if amount < 0: raise ValueError("Contribution must be non-negative")
