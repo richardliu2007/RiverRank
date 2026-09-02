@@ -63,12 +63,11 @@ handMapper = {
     8: "four of a kind",
     9: "straight flush"
 }
-def displayShowdownInfo(game:Game):
+def displayShowdownInfo(game:Game, showdownRes):
     for player in game.players:
         if not player.eliminated and not player.folded:
             formattedCards = " ".join(cardFormatter(card) for card in player.cards)
             print(f"{player.name} hand: {formattedCards}")
-    showdownRes = game._showdown()
     for res in showdownRes:
         print(f"{res[2]} wins {res[3]} from {"main" if res[1] == 0 else "side"} pot{" " + str(res[1]) if res[1] != 0 else ""} of size {res[0]} with: {handMapper[res[4][0]]}")
 
@@ -174,12 +173,12 @@ def main():
                 print("All in runout will begin.")
                 game._runoutBoard()
                 displayTableInfo(game)
-                displayShowdownInfo(game)
+                displayShowdownInfo(game, game._showdown())
 
             elif game.street == "river":
                 game.street = "showdown"
                 displayTableInfo(game)
-                displayShowdownInfo(game)
+                displayShowdownInfo(game, game._showdown())
                 
             else:
                 game._nextStreet()
