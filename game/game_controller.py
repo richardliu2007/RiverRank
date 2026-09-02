@@ -108,6 +108,7 @@ def main():
                 #acted = actor.has_acted
                 actions = game.legalActions(actor, False)
                 availableActions = [action for action, allowed in actions.items() if allowed]
+                if "call" not in availableActions and game._checkRunoutNeeded(): break
                 if actor is user:
                     displayPlayerInfo(user)
                     if "call" in availableActions: print(f"Amount to call: {game.outstanding_bet-user.street_bet}")
