@@ -63,6 +63,7 @@ handMapper = {
     8: "four of a kind",
     9: "straight flush"
 }
+
 def displayShowdownInfo(game:Game, showdownRes):
     for player in game.players:
         if not player.eliminated and not player.folded:
@@ -71,13 +72,57 @@ def displayShowdownInfo(game:Game, showdownRes):
     for res in showdownRes:
         print(f"{res[2]} wins {res[3]} from {"main" if res[1] == 0 else "side"} pot{" " + str(res[1]) if res[1] != 0 else ""} of size {res[0]} with: {handMapper[res[4][0]]}")
 
-
 def promptForInteger(prompt):
     while True:
         try:
             return int(input(prompt))
         except ValueError:
             print("Please enter an integer.")    
+
+#prompts for a valid action
+def promptAction(player:Player, game:Game) -> dict:
+    actions = game.legalActions(player, False)
+    availableActions = [action for action, allowed in actions.items() if allowed]
+    if "call" not in availableActions and game._checkRunoutNeeded():
+        return None
+    if "call" in availableActions: print(f"Amount to call: {game.outstanding_bet-player.street_bet}")
+    action = input(f"Select an action: ({', '.join(availableActions)}): ").strip().lower()
+    while action not in availableActions: 
+        action = input(f"Try another action: ({', '.join(availableActions)}): ").strip().lower()
+    amount = None
+    if action == "bet":
+        amount = promptForInteger("Enter amount: ")
+        while not (amount >= game.blinds["big"] or amount == player.stack):
+            amount = promptForInteger("Try another amount: ")
+    if action == "raise":
+        amount = promptForInteger("Enter amount to raise to: ")
+        amount = min(amount, player.stack + player.street_bet)
+        while True:
+            if amount < game.outstanding_bet + game.toRaise:
+                if amount == player.street_bet + player.stack:
+                    break
+                else:
+                    amount = promptForInteger("Raise amount too low: ")
+                    amount = min(amount, player.stack + player.street_bet)
+            else:
+                break
+    return {"action":action, "amount":amount}
+
+def getBotAction(bot:Player, game:Game) -> dict:
+    actions = game.legalActions(bot, False)
+    availableActions = [action for action, allowed in actions.items() if allowed]
+    if "call" not in availableActions and game._checkRunoutNeeded():
+        return
+    action = random.choice(availableActions)
+    amount = None
+    while bot.street_bet == game.outstanding_bet and action == "fold":
+        action = random.choice(availableActions)
+    if action == "bet":
+        amount = game.blinds["big"]
+    if action == "raise":
+        amount = game.outstanding_bet + game.toRaise
+        
+    return {"action":action, "amount":amount}
 
 def main():
     #Initiate game object with 5 bots and the player
@@ -86,7 +131,6 @@ def main():
     players.append(user)
     game = Game(0,1,2, players, 2000)
     handCount = 0
-
     while game.gameActive:
         if user.eliminated:
             print("You have been eliminated.")
@@ -105,64 +149,23 @@ def main():
             if game.street == "preflop": displayTableInfo(game)
             while not game._streetOver():
                 actor = game.players[game.action_idx]
-                #acted = actor.has_acted
-                actions = game.legalActions(actor, False)
-                availableActions = [action for action, allowed in actions.items() if allowed]
-                if "call" not in availableActions and game._checkRunoutNeeded(): break
                 if actor is user:
                     displayPlayerInfo(user)
-                    if "call" in availableActions: print(f"Amount to call: {game.outstanding_bet-user.street_bet}")
-                    action = input(f"Select an action: ({', '.join(availableActions)}): ").strip().lower()
-                    while action not in availableActions: 
-                        action = input(f"Try another action: ({', '.join(availableActions)}): ").strip().lower()
-                    if action == "check":
-                        game._check(user)
-                    if action == "fold":
-                        game._fold(user)
-                    if action == "call":
-                        game._call(user)
-                    if action == "bet":
-                        amount = promptForInteger("Enter amount: ")
-                        while(amount < game.blinds["big"]):
-                            amount = promptForInteger("Try another amount: ")
-                        game._bet(user, amount)
-                    if action == "raise":
-                        amount = promptForInteger("Enter amount to raise to: ")
-                        amount = min(amount, user.stack + user.street_bet)
-                        while True:
-                            if amount < game.outstanding_bet + game.toRaise:
-                                if amount == user.street_bet + user.stack:
-                                    break
-                                else:
-                                    amount = promptForInteger("Raise amount too low: ")
-                                    amount = min(amount, user.stack + user.street_bet)
-                            else:
-                                break
-                        game._raise(user, amount)
-                    game._nextAct()
+                    action = promptAction(actor, game)
+                    if not action: break
+                    if not game.applyAction(actor, action): raise ValueError("Error occured when processing action.")
                     print("")
                 else:
-                    action = random.choice(availableActions)
-                    while actor.street_bet == game.outstanding_bet and action == "fold":
-                        action = random.choice(availableActions)
-                    if action == "check":
-                        game._check(actor)
-                        print(f"{actor.name} checks.")
-                    if action == "fold":
-                        game._fold(actor)
-                        print(f"{actor.name} folds.")
-                    if action == "call":
-                        print(f"{actor.name} calls {min(game.outstanding_bet - actor.street_bet, actor.stack)}.")
-                        game._call(actor)
-                    if action == "bet":
-                        amount = game.blinds["big"]
-                        game._bet(actor, amount)
-                        print(f"{actor.name} bets {amount}.")
-                    if action == "raise":
-                        amount = game.outstanding_bet + game.toRaise
-                        game._raise(actor, amount)
-                        print(f"{actor.name} raises to {actor.street_bet}.")
-                    game._nextAct()
+                    action = getBotAction(actor, game)
+                    if not action: break
+                    stackBefore = actor.stack
+                    if not game.applyAction(actor, action): raise ValueError("Error occured when processing action.")
+                    action, amount = action.get("action"), action.get("amount")
+                    if action == "check": print(f"{actor.name} checks.")
+                    if action == "fold": print(f"{actor.name} folds.")
+                    if action == "call": print(f"{actor.name} calls {stackBefore - actor.stack}.")
+                    if action == "bet": print(f"{actor.name} bets {stackBefore - actor.stack}.")
+                    if action == "raise": print(f"{actor.name} raises to {actor.street_bet}.")
                 candidate = game._checkHandActive()
                 if candidate:
                     pot = game.pot

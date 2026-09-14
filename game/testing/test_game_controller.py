@@ -1,8 +1,11 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
+import pytest
 
 from game.game_controller import (
     cardFormatter,
+    promptAction,
+    getBotAction,
     displayPlayerInfo,
     displayShowdownInfo,
     displayTableInfo,
@@ -94,3 +97,349 @@ def test_display_showdown_info_reveals_eligible_hands_and_formats_pots(capsys):
     assert "Eliminated hand:" not in output
     assert "Alice wins 300 from main pot of size 300 with: straight" in output
     assert "Bob wins 100 from side pot 1 of size 100 with: pair" in output
+
+def create_action_game():
+    players = [Player("Alice"), Player("Bob")]
+    game = Game(0, 1, 1, players, 2_000)
+    game.action_idx = 0
+    return game, players[0]
+
+def test_prompt_action_returns_check_without_amount(monkeypatch):
+    game, player = create_action_game()
+    monkeypatch.setattr("builtins.input", lambda _: "check")
+    result = promptAction(player, game)
+    assert result == {
+        "action": "check",
+        "amount": None,
+    }
+
+def test_prompt_action_reports_call_amount(monkeypatch, capsys):
+    game, player = create_action_game()
+    game.outstanding_bet = 50
+    player.street_bet = 20
+    monkeypatch.setattr("builtins.input", lambda _: "call")
+    result = promptAction(player, game)
+    assert result == {
+        "action": "call",
+        "amount": None,
+    }
+    assert "Amount to call: 30" in capsys.readouterr().out
+
+
+def test_prompt_action_retries_invalid_bet_amounts(monkeypatch, capsys):
+    game, player = create_action_game()
+    responses = iter([
+        "bet",
+        "not a number",
+        "10",  # Below the 20-chip minimum.
+        "40",
+    ])
+    monkeypatch.setattr("builtins.input", lambda _: next(responses))
+    result = promptAction(player, game)
+    assert result == {
+        "action": "bet",
+        "amount": 40,
+    }
+    output = capsys.readouterr().out
+    assert "Please enter an integer." in output
+
+def test_prompt_action_returns_none_when_all_in_runout_is_needed(monkeypatch):
+    players = [Player("Alice"), Player("Bob")]
+    game = Game(0, 1, 1, players, 2_000)
+    actor, opponent = players
+    game.action_idx = 0
+    game.outstanding_bet = 0
+    opponent.all_in = True
+    # Input must not be requested when the board should run out.
+    def fail_if_prompted(_):
+        pytest.fail("promptAction should not request input during an all-in runout")
+    monkeypatch.setattr("builtins.input", fail_if_prompted)
+    result = promptAction(actor, game)
+    assert game._checkRunoutNeeded() is True
+    assert result is None
+
+def test_prompt_action_displays_amount_to_call(monkeypatch, capsys):
+    players = [Player("Alice"), Player("Bob")]
+    game = Game(0, 1, 1, players, 2_000)
+    player = players[0]
+    game.action_idx = 0
+    game.outstanding_bet = 50
+    player.street_bet = 20
+    monkeypatch.setattr("builtins.input", lambda _: "call")
+    result = promptAction(player, game)
+    output = capsys.readouterr().out
+    assert "Amount to call: 30" in output
+    assert result == {
+        "action": "call",
+        "amount": None,
+    }
+
+def test_prompt_action_does_not_display_amount_to_call_when_call_is_unavailable(
+    monkeypatch,
+    capsys,
+):
+    players = [Player("Alice"), Player("Bob")]
+    game = Game(0, 1, 1, players, 2_000)
+    player = players[0]
+    game.action_idx = 0
+    game.outstanding_bet = 0
+    monkeypatch.setattr("builtins.input", lambda _: "check")
+    result = promptAction(player, game)
+    output = capsys.readouterr().out
+    assert "Amount to call:" not in output
+    assert result == {
+        "action": "check",
+        "amount": None,
+    }
+
+def test_prompt_action_reprompts_after_invalid_action(monkeypatch):
+    game, player = create_action_game()
+    responses = iter(["raise", "check"])
+    prompts = []
+    def fake_input(prompt):
+        prompts.append(prompt)
+        return next(responses)
+    monkeypatch.setattr("builtins.input", fake_input)
+    result = promptAction(player, game)
+    assert result == {"action": "check", "amount": None}
+    assert len(prompts) == 2
+    assert prompts[1].startswith("Try another action:")
+
+def test_prompt_action_accepts_minimum_raise(monkeypatch):
+    game, player = create_action_game()
+    game.outstanding_bet = 50
+    game.toRaise = 20
+    player.street_bet = 20
+    responses = iter(["raise", "70"])
+    monkeypatch.setattr("builtins.input", lambda _: next(responses))
+    result = promptAction(player, game)
+    assert result == {
+        "action": "raise",
+        "amount": 70,
+    }
+
+def test_prompt_action_reprompts_after_undersized_raise(monkeypatch):
+    game, player = create_action_game()
+    game.outstanding_bet = 50
+    game.toRaise = 20
+    player.street_bet = 20
+    responses = iter(["raise", "60", "70"])
+    prompts = []
+    def fake_input(prompt):
+        prompts.append(prompt)
+        return next(responses)
+    monkeypatch.setattr("builtins.input", fake_input)
+    result = promptAction(player, game)
+    assert result == {
+        "action": "raise",
+        "amount": 70,
+    }
+    assert len(prompts) == 3
+    assert prompts[2] == "Raise amount too low: "
+
+def test_prompt_action_accepts_short_all_in_raise(monkeypatch):
+    game, player = create_action_game()
+    game.outstanding_bet = 50
+    game.toRaise = 20
+    player.street_bet = 20
+    player.stack = 40  # Maximum raise target is 60, below the normal minimum of 70.
+    responses = iter(["raise", "60"])
+    prompts = []
+    def fake_input(prompt):
+        prompts.append(prompt)
+        return next(responses)
+    monkeypatch.setattr("builtins.input", fake_input)
+    result = promptAction(player, game)
+
+    assert result == {
+        "action": "raise",
+        "amount": 60,
+    }
+    assert len(prompts) == 2
+
+# def test_prompt_action_caps_raise_at_players_available_chips(monkeypatch):
+#     game, player = create_action_game()
+#     game.outstanding_bet = 50
+#     game.toRaise = 20
+#     player.street_bet = 20
+#     player.stack = 80  # Maximum raise target is 100.
+#     responses = iter(["raise", "1000"])
+#     monkeypatch.setattr("builtins.input", lambda _: next(responses))
+#     result = promptAction(player, game)
+#     assert result == {
+#         "action": "raise",
+#         "amount": 100,
+#     }
+
+def test_prompt_action_normalizes_case_and_whitespace(monkeypatch):
+    game, player = create_action_game()
+    monkeypatch.setattr("builtins.input", lambda _: "  ChEcK  ")
+    result = promptAction(player, game)
+    assert result == {
+        "action": "check",
+        "amount": None,
+    }
+
+def test_prompt_action_returns_fold_without_amount(monkeypatch):
+    game, player = create_action_game()
+    monkeypatch.setattr("builtins.input", lambda _: "fold")
+    result = promptAction(player, game)
+    assert result == {
+        "action": "fold",
+        "amount": None,
+    }
+
+def test_get_bot_action_returns_check_without_amount(monkeypatch):
+    game, bot = create_action_game()
+    monkeypatch.setattr(
+        "game.game_controller.random.choice",
+        lambda _: "check",
+    )
+    result = getBotAction(bot, game)
+    assert result == {
+        "action": "check",
+        "amount": None,
+    }
+
+
+def test_get_bot_action_returns_call_without_amount(monkeypatch):
+    game, bot = create_action_game()
+    game.outstanding_bet = 50
+    bot.street_bet = 20
+    monkeypatch.setattr(
+        "game.game_controller.random.choice",
+        lambda _: "call",
+    )
+    result = getBotAction(bot, game)
+    assert result == {
+        "action": "call",
+        "amount": None,
+    }
+
+
+def test_get_bot_action_returns_big_blind_bet(monkeypatch):
+    game, bot = create_action_game()
+    monkeypatch.setattr(
+        "game.game_controller.random.choice",
+        lambda _: "bet",
+    )
+    result = getBotAction(bot, game)
+    assert result == {
+        "action": "bet",
+        "amount": game.blinds["big"],
+    }
+
+
+def test_get_bot_action_returns_none_when_all_in_runout_is_needed(
+    monkeypatch,
+):
+    game, bot = create_action_game()
+    opponent = game.players[1]
+    opponent.all_in = True
+    def fail_if_called(_):
+        pytest.fail("random.choice should not run when a runout is needed")
+    monkeypatch.setattr(
+        "game.game_controller.random.choice",
+        fail_if_called,
+    )
+    result = getBotAction(bot, game)
+    assert game._checkRunoutNeeded() is True
+    assert result is None
+
+
+def test_get_bot_action_does_not_skip_remaining_call_decision(
+    monkeypatch,
+):
+    game, bot = create_action_game()
+    opponent = game.players[1]
+    opponent.all_in = True
+    game.outstanding_bet = 50
+    bot.street_bet = 20
+    monkeypatch.setattr(
+        "game.game_controller.random.choice",
+        lambda _: "call",
+    )
+    result = getBotAction(bot, game)
+    assert game._checkRunoutNeeded() is True
+    assert result == {
+        "action": "call",
+        "amount": None,
+    }
+
+
+def test_get_bot_action_returns_minimum_raise(monkeypatch):
+    game, bot = create_action_game()
+    game.outstanding_bet = 50
+    game.toRaise = 20
+    bot.street_bet = 20
+    monkeypatch.setattr(
+        "game.game_controller.random.choice",
+        lambda _: "raise",
+    )
+    result = getBotAction(bot, game)
+    assert result == {
+        "action": "raise",
+        "amount": 70,
+    }
+
+
+# def test_get_bot_action_caps_short_all_in_raise(monkeypatch):
+#     game, bot = create_action_game()
+#     game.outstanding_bet = 50
+#     game.toRaise = 20
+#     bot.street_bet = 20
+#     bot.stack = 40  # can only raise to 60 vs. min raise of 70
+#     monkeypatch.setattr(
+#         "game.game_controller.random.choice",
+#         lambda _: "raise",
+#     )
+#     result = getBotAction(bot, game)
+#     assert result == {
+#         "action": "raise",
+#         "amount": 60,
+#     }
+
+
+# def test_get_bot_action_uses_remaining_stack_for_short_all_in_bet(
+#     monkeypatch,
+# ):
+#     game, bot = create_action_game()
+#     bot.stack = 10  #less than 20 min bet
+#     monkeypatch.setattr(
+#         "game.game_controller.random.choice",
+#         lambda _: "bet",
+#     )
+#     result = getBotAction(bot, game)
+#     assert result == {
+#         "action": "bet",
+#         "amount": 10,
+#     }
+
+
+def test_get_bot_action_returns_fold_without_amount(monkeypatch):
+    game, bot = create_action_game()
+    game.outstanding_bet = 50
+    bot.street_bet = 20
+    monkeypatch.setattr(
+        "game.game_controller.random.choice",
+        lambda _: "fold",
+    )
+    result = getBotAction(bot, game)
+    assert result == {
+        "action": "fold",
+        "amount": None,
+    }
+
+
+def test_get_bot_action_reselects_fold_when_bot_can_check(monkeypatch):
+    game, bot = create_action_game()
+    selections = iter(["fold", "check"])
+    monkeypatch.setattr(
+        "game.game_controller.random.choice",
+        lambda _: next(selections),
+    )
+    result = getBotAction(bot, game)
+    assert result == {
+        "action": "check",
+        "amount": None,
+    }

@@ -241,6 +241,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
     def _validateAction(self, player:Player):
         if player not in self.players or self.players[self.action_idx] is not player or player.eliminated or player.folded or player.all_in:
             raise ValueError("Player not eligle to act.")
+        
 
     def _fold(self, player:Player):
         self._validateAction(player)
@@ -417,5 +418,74 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             return candidateWinner
         return None
 
+    def applyAction(self, player:Player, action:dict):
+        #basic checks: player must exist, must have action, and requested action must be valid
+        if not isinstance(action, dict): return False
+        if player not in self.players: return False
+        if self.players[self.action_idx] != player: return False
+        if player.folded or player.eliminated or player.all_in or not player.to_act: return False
+        actions = self.legalActions(player, False)
+        availableActions = [action for action, allowed in actions.items() if allowed]
+        if action.get("action") not in availableActions: return False
+        if action.get("amount") is not None and not type(action.get("amount")) is int: return False
 
+        #assuming the current player has requested a valid action, check, fold, and call are necessarily valid
+        #need to separately check bet and fold
+        if action["action"] == "check":
+            self._check(player)
+        if action["action"] == "fold":
+            self._fold(player)
+        if action["action"] == "call":
+            self._call(player)
+        if action["action"] == "bet":
+            if action.get("amount") is not None:
+                if action.get("amount") < self.blinds["big"]:
+                    if action.get("amount") != player.stack: return False
+                self._bet(player, action["amount"])
+            else: return False
+        if action["action"] == "raise":
+            if action.get("amount") is not None:
+                if action.get("amount") < self.outstanding_bet + self.toRaise:
+                    if action.get("amount") < player.street_bet + player.stack:
+                        return False
 
+                self._raise(player, action.get("amount"))
+            else: return False
+        self._nextAct()
+        return True
+
+    def getVisibleState(self, player:Player):
+        """
+        *PLAYER
+        stack
+        street bet
+        to act
+        cards
+
+        *GAME
+        btn idx
+        players: player ID:[player name, player stacks, player street bets, player status (all-in, folded)]
+        pot
+        board
+        action_idx
+        """
+        from game.game_controller import cardFormatter
+        you = None
+        btnIdx = self.btn_idx
+        players = {} #(player ID/index: name, stack, street bet)
+        for index, p in enumerate(self.players):
+            if p is player: you = index
+            players[index] = {"name": p.name, "stack": p.stack, "streetBet": p.street_bet, "folded": p.folded, "allIn": p.all_in}
+        communityCards = " ".join(cardFormatter(card) for card in self.board)
+        holeCards = " ".join(cardFormatter(card) for card in player.cards)
+        potSize = self.pot
+        actionIdx = self.action_idx
+        return {
+            "yourID": you,
+            "actionID": actionIdx,
+            "buttonID": btnIdx,
+            "players": players,
+            "board": communityCards,
+            "hand": holeCards,
+            "pot": potSize
+        }

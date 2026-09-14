@@ -718,12 +718,717 @@ def test_runout_does_not_skip_remaining_call_decision():
         for action, allowed in actions.items()
         if allowed
     ]
-
     assert game._checkRunoutNeeded() is True
     assert "call" in available_actions
-
     should_run_out = (
         "call" not in available_actions
         and game._checkRunoutNeeded()
     )
     assert should_run_out is False
+
+@pytest.mark.parametrize("invalid_action", [
+    None,
+    "check",
+    ["check"],
+    42,
+])
+def test_apply_action_rejects_invalid_input_types(invalid_action):
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 100)
+    game.street = "flop"
+    game.action_idx = 0
+    result = game.applyAction(players[0], invalid_action)
+    assert result is False
+    assert game.action_idx == 0
+    assert game.pot == 0
+    assert players[0].stack == 100
+    assert players[0].to_act is True
+
+def test_apply_action_rejects_nonexistent_player():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 100)
+    game.street = "flop"
+    game.action_idx = 0
+    nonexistent_player = Player("Not seated", stack=100)
+    result = game.applyAction(
+        nonexistent_player,
+        {"action": "check", "amount": None},
+    )
+    assert result is False
+    assert game.action_idx == 0
+    assert game.pot == 0
+    assert players[0].to_act is True
+
+def test_apply_action_rejects_player_without_current_action():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 100)
+    game.street = "flop"
+    game.action_idx = 0
+    result = game.applyAction(
+        players[1],
+        {"action": "check", "amount": None},
+    )
+    assert result is False
+    assert game.action_idx == 0
+    assert game.pot == 0
+    assert players[0].to_act is True
+    assert players[1].to_act is True
+
+@pytest.mark.parametrize("invalid_choice", [
+    "dance",
+    "call",  # A call is unavailable when there is no outstanding bet.
+])
+def test_apply_action_rejects_invalid_action_choices(invalid_choice):
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 100)
+    game.street = "flop"
+    game.action_idx = 0
+    game.outstanding_bet = 0
+    result = game.applyAction(
+        players[0],
+        {"action": invalid_choice, "amount": None},
+    )
+    assert result is False
+    assert game.action_idx == 0
+    assert game.pot == 0
+    assert players[0].stack == 100
+    assert players[0].to_act is True
+
+@pytest.mark.parametrize("invalid_amount", [
+    "20",
+    20.0,
+    True,
+])
+def test_apply_action_rejects_invalid_amount_typing(invalid_amount):
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 100)
+    game.street = "flop"
+    game.action_idx = 0
+    game.outstanding_bet = 0
+    result = game.applyAction(
+        players[0],
+        {"action": "bet", "amount": invalid_amount},
+    )
+    assert result is False
+    assert game.action_idx == 0
+    assert game.pot == 0
+    assert players[0].stack == 100
+    assert players[0].street_bet == 0
+    assert players[0].total_bet == 0
+
+def test_apply_action_check_preserves_chips_and_advances_action():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 100)
+    game.street = "flop"
+    game.action_idx = 0
+    game.outstanding_bet = 0
+    actor = players[0]
+    chips_before = sum(player.stack for player in players) + game.pot
+    result = game.applyAction(
+        actor,
+        {"action": "check", "amount": None},
+    )
+    chips_after = sum(player.stack for player in players) + game.pot
+    assert result is True
+    assert chips_after == chips_before
+    assert actor.stack == 100
+    assert actor.street_bet == 0
+    assert actor.total_bet == 0
+    assert game.pot == 0
+    assert actor.to_act is False
+    assert game.action_idx == 1
+
+def test_apply_action_fold_preserves_chips_and_advances_action():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 100)
+    game.street = "flop"
+    game.action_idx = 0
+    actor = players[0]
+    chips_before = sum(player.stack for player in players) + game.pot
+    result = game.applyAction(
+        actor,
+        {"action": "fold", "amount": None},
+    )
+    chips_after = sum(player.stack for player in players) + game.pot
+    assert result is True
+    assert chips_after == chips_before
+    assert actor.stack == 100
+    assert actor.street_bet == 0
+    assert actor.total_bet == 0
+    assert game.pot == 0
+    assert actor.folded is True
+    assert actor.to_act is False
+    assert game.action_idx == 1
+
+def test_apply_action_call_matches_bet_conserves_chips_and_advances_action():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 100)
+    game.street = "flop"
+    game.action_idx = 0
+    actor = players[0]
+    bettor = players[2]
+    actor.stack = 80
+    actor.street_bet = 20
+    actor.total_bet = 20
+    bettor.stack = 50
+    bettor.street_bet = 50
+    bettor.total_bet = 50
+    bettor.to_act = False
+    game.outstanding_bet = 50
+    game.toRaise = 20
+    game.pot = 70
+    chips_before = sum(player.stack for player in players) + game.pot
+    result = game.applyAction(
+        actor,
+        {"action": "call", "amount": None},
+    )
+    chips_after = sum(player.stack for player in players) + game.pot
+    assert result is True
+    assert chips_after == chips_before
+    assert actor.stack == 50
+    assert actor.street_bet == game.outstanding_bet == 50
+    assert actor.total_bet == 50
+    assert game.pot == 100
+    assert actor.to_act is False
+    assert game.action_idx == 1
+
+
+def test_apply_action_bet_rejects_undersized_bet():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 100)
+    game.street = "flop"
+    game.action_idx = 0
+    game.outstanding_bet = 0
+    actor = players[0]
+    chips_before = sum(player.stack for player in players) + game.pot
+    result = game.applyAction(
+        actor,
+        {"action": "bet", "amount": 10},
+    )
+    chips_after = sum(player.stack for player in players) + game.pot
+    assert result is False
+    assert chips_after == chips_before
+    assert actor.stack == 100
+    assert actor.street_bet == 0
+    assert actor.total_bet == 0
+    assert actor.to_act is True
+    assert game.pot == 0
+    assert game.outstanding_bet == 0
+    assert game.action_idx == 0
+
+def test_apply_action_bet_accepts_short_all_in_bet():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 100)
+    game.street = "flop"
+    game.action_idx = 0
+    game.outstanding_bet = 0
+    actor = players[0]
+    actor.stack = 10
+    chips_before = sum(player.stack for player in players) + game.pot
+    result = game.applyAction(
+        actor,
+        {"action": "bet", "amount": 10},
+    )
+    chips_after = sum(player.stack for player in players) + game.pot
+    assert result is True
+    assert chips_after == chips_before
+    assert actor.stack == 0
+    assert actor.street_bet == 10
+    assert actor.total_bet == 10
+    assert actor.all_in is True
+    assert actor.to_act is False
+    assert game.pot == 10
+    assert game.outstanding_bet == 10
+    assert game.toRaise == 10
+    assert game.action_idx == 1
+
+def test_apply_action_bet_conserves_chips_and_advances_action():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 100)
+    game.street = "flop"
+    game.action_idx = 0
+    game.outstanding_bet = 0
+    actor = players[0]
+    chips_before = sum(player.stack for player in players) + game.pot
+    result = game.applyAction(
+        actor,
+        {"action": "bet", "amount": 40},
+    )
+    chips_after = sum(player.stack for player in players) + game.pot
+    assert result is True
+    assert chips_after == chips_before
+    assert actor.stack == 60
+    assert actor.street_bet == 40
+    assert actor.total_bet == 40
+    assert actor.to_act is False
+    assert game.pot == 40
+    assert game.outstanding_bet == 40
+    assert game.toRaise == 40
+    assert game.action_idx == 1
+
+def test_apply_action_raise_rejects_undersized_raise():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 100)
+    game.street = "flop"
+    game.action_idx = 0
+    actor = players[0]
+    bettor = players[2]
+    actor.stack = 80
+    actor.street_bet = 20
+    actor.total_bet = 20
+    bettor.stack = 50
+    bettor.street_bet = 50
+    bettor.total_bet = 50
+    bettor.to_act = False
+    game.pot = 70
+    game.outstanding_bet = 50
+    game.toRaise = 20
+    chips_before = sum(player.stack for player in players) + game.pot
+    result = game.applyAction(
+        actor,
+        {"action": "raise", "amount": 60},
+    )
+    chips_after = sum(player.stack for player in players) + game.pot
+    assert result is False
+    assert chips_after == chips_before
+    assert actor.stack == 80
+    assert actor.street_bet == 20
+    assert actor.total_bet == 20
+    assert actor.to_act is True
+    assert game.pot == 70
+    assert game.outstanding_bet == 50
+    assert game.toRaise == 20
+    assert game.action_idx == 0
+
+def test_apply_action_raise_accepts_short_all_in_raise():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 100)
+    game.street = "flop"
+    game.action_idx = 0
+    actor = players[0]
+    bettor = players[2]
+    actor.stack = 40
+    actor.street_bet = 20
+    actor.total_bet = 20
+    bettor.stack = 50
+    bettor.street_bet = 50
+    bettor.total_bet = 50
+    bettor.to_act = False
+    game.pot = 70
+    game.outstanding_bet = 50
+    game.toRaise = 20
+    chips_before = sum(player.stack for player in players) + game.pot
+    result = game.applyAction(
+        actor,
+        {"action": "raise", "amount": 60},
+    )
+    chips_after = sum(player.stack for player in players) + game.pot
+    assert result is True
+    assert chips_after == chips_before
+    assert actor.stack == 0
+    assert actor.street_bet == 60
+    assert actor.total_bet == 60
+    assert actor.all_in is True
+    assert actor.to_act is False
+    assert game.pot == 110
+    assert game.outstanding_bet == 60
+    # A short raise does not change the previous full-raise increment.
+    assert game.toRaise == 20
+    assert game.action_idx == 1
+
+def test_apply_action_raise_conserves_chips_and_advances_action():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 100)
+    game.street = "flop"
+    game.action_idx = 0
+    actor = players[0]
+    bettor = players[2]
+    actor.stack = 80
+    actor.street_bet = 20
+    actor.total_bet = 20
+    bettor.stack = 50
+    bettor.street_bet = 50
+    bettor.total_bet = 50
+    bettor.to_act = False
+    game.pot = 70
+    game.outstanding_bet = 50
+    game.toRaise = 20
+    chips_before = sum(player.stack for player in players) + game.pot
+    result = game.applyAction(
+        actor,
+        {"action": "raise", "amount": 70},
+    )
+    chips_after = sum(player.stack for player in players) + game.pot
+    assert result is True
+    assert chips_after == chips_before
+    assert actor.stack == 30
+    assert actor.street_bet == 70
+    assert actor.total_bet == 70
+    assert actor.to_act is False
+    assert game.pot == 120
+    assert game.outstanding_bet == 70
+    assert game.toRaise == 20
+    assert game.action_idx == 1
+
+def test_apply_action_accepts_short_all_in_call():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 100)
+    game.street = "flop"
+    game.action_idx = 0
+    actor = players[0]
+    bettor = players[2]
+    actor.stack = 20
+    actor.street_bet = 20
+    actor.total_bet = 20
+    bettor.stack = 50
+    bettor.street_bet = 50
+    bettor.total_bet = 50
+    bettor.to_act = False
+    game.pot = 70
+    game.outstanding_bet = 50
+    game.toRaise = 20
+    chips_before = sum(player.stack for player in players) + game.pot
+    result = game.applyAction(
+        actor,
+        {"action": "call", "amount": None},
+    )
+    chips_after = sum(player.stack for player in players) + game.pot
+    assert result is True
+    assert chips_after == chips_before
+    assert actor.stack == 0
+    assert actor.street_bet == 40
+    assert actor.total_bet == 40
+    assert actor.street_bet < game.outstanding_bet
+    assert actor.all_in is True
+    assert actor.to_act is False
+    assert game.pot == 90
+    assert game.outstanding_bet == 50
+    assert game.action_idx == 1
+
+
+@pytest.mark.parametrize(
+    "ineligible_state",
+    [
+        "folded",
+        "eliminated",
+        "all_in",
+        "already_acted",
+    ],
+)
+def test_apply_action_rejects_ineligible_current_player(ineligible_state):
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 100)
+    game.street = "flop"
+    game.action_idx = 0
+    actor = players[0]
+    if ineligible_state == "folded":
+        actor.folded = True
+    elif ineligible_state == "eliminated":
+        actor.eliminated = True
+        actor.stack = 0
+    elif ineligible_state == "all_in":
+        actor.all_in = True
+        actor.stack = 0
+    elif ineligible_state == "already_acted":
+        actor.to_act = False
+    state_before = (
+        game.action_idx,
+        game.pot,
+        actor.stack,
+        actor.street_bet,
+        actor.total_bet,
+        actor.folded,
+        actor.eliminated,
+        actor.all_in,
+        actor.to_act,
+    )
+    result = game.applyAction(
+        actor,
+        {"action": "fold", "amount": None},
+    )
+    state_after = (
+        game.action_idx,
+        game.pot,
+        actor.stack,
+        actor.street_bet,
+        actor.total_bet,
+        actor.folded,
+        actor.eliminated,
+        actor.all_in,
+        actor.to_act,
+    )
+    assert result is False
+    assert state_after == state_before
+
+
+@pytest.mark.parametrize(
+    "action_request",
+    [
+        pytest.param(
+            {"action": "bet"},
+            id="bet-missing-amount",
+        ),
+        pytest.param(
+            {"action": "bet", "amount": None},
+            id="bet-none-amount",
+        ),
+        pytest.param(
+            {"action": "bet", "amount": "20"},
+            id="bet-string-amount",
+        ),
+        pytest.param(
+            {"action": "bet", "amount": 20.0},
+            id="bet-float-amount",
+        ),
+        pytest.param(
+            {"action": "bet", "amount": True},
+            id="bet-boolean-amount",
+        ),
+        pytest.param(
+            {"action": "raise"},
+            id="raise-missing-amount",
+        ),
+        pytest.param(
+            {"action": "raise", "amount": None},
+            id="raise-none-amount",
+        ),
+        pytest.param(
+            {"action": "raise", "amount": "70"},
+            id="raise-string-amount",
+        ),
+        pytest.param(
+            {"action": "raise", "amount": 70.0},
+            id="raise-float-amount",
+        ),
+        pytest.param(
+            {"action": "raise", "amount": True},
+            id="raise-boolean-amount",
+        ),
+    ],
+)
+def test_apply_action_rejects_missing_or_invalid_sized_action_amount(
+    action_request,
+):
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 100)
+    game.street = "flop"
+    game.action_idx = 0
+    actor = players[0]
+    if action_request["action"] == "raise":
+        bettor = players[2]
+        actor.stack = 80
+        actor.street_bet = 20
+        actor.total_bet = 20
+        bettor.stack = 50
+        bettor.street_bet = 50
+        bettor.total_bet = 50
+        bettor.to_act = False
+        game.pot = 70
+        game.outstanding_bet = 50
+        game.toRaise = 20
+    state_before = (
+        game.action_idx,
+        game.pot,
+        game.outstanding_bet,
+        game.toRaise,
+        actor.stack,
+        actor.street_bet,
+        actor.total_bet,
+        actor.to_act,
+    )
+    result = game.applyAction(actor, action_request)
+    state_after = (
+        game.action_idx,
+        game.pot,
+        game.outstanding_bet,
+        game.toRaise,
+        actor.stack,
+        actor.street_bet,
+        actor.total_bet,
+        actor.to_act,
+    )
+    assert result is False
+    assert state_after == state_before
+
+def test_apply_action_full_raise_reopens_action_for_other_eligible_players():
+    players = [Player("A"), Player("B"), Player("C")]
+    game = Game(0, 1, 2, players, 100)
+    game.street = "flop"
+    game.action_idx = 0
+    actor = players[0]
+    next_player = players[1]
+    previous_bettor = players[2]
+    actor.stack = 80
+    actor.street_bet = 20
+    actor.total_bet = 20
+    next_player.to_act = False
+    previous_bettor.stack = 50
+    previous_bettor.street_bet = 50
+    previous_bettor.total_bet = 50
+    previous_bettor.to_act = False
+    game.pot = 70
+    game.outstanding_bet = 50
+    game.toRaise = 20
+    chips_before = sum(player.stack for player in players) + game.pot
+    result = game.applyAction(
+        actor,
+        {"action": "raise", "amount": 70},
+    )
+    chips_after = sum(player.stack for player in players) + game.pot
+    assert result is True
+    assert chips_after == chips_before
+    assert actor.stack == 30
+    assert actor.street_bet == 70
+    assert actor.total_bet == 70
+    assert actor.to_act is False
+    assert next_player.to_act is True
+    assert previous_bettor.to_act is True
+    assert game.pot == 120
+    assert game.outstanding_bet == 70
+    assert game.toRaise == 20
+    assert game.action_idx == 1
+
+from game.game_controller import cardFormatter
+
+@pytest.mark.parametrize(
+    ("street", "board"),
+    [
+        pytest.param(
+            "preflop",
+            [],
+            id="preflop",
+        ),
+        pytest.param(
+            "flop",
+            [(2, "c"), (7, "d"), (11, "s")],
+            id="flop",
+        ),
+        pytest.param(
+            "turn",
+            [(2, "c"), (7, "d"), (11, "s"), (14, "h")],
+            id="turn",
+        ),
+        pytest.param(
+            "river",
+            [(2, "c"), (7, "d"), (11, "s"), (14, "h"), (10, "c")],
+            id="river",
+        ),
+    ],
+)
+def test_get_visible_state_returns_expected_three_handed_state(
+    street,
+    board,
+):
+    players = [
+        Player("Alice"),
+        Player("Bob"),
+        Player("Carol"),
+    ]
+    game = Game(0, 1, 2, players, 100)
+    viewer = players[1]
+    players[0].stack = 90
+    players[0].street_bet = 10
+    viewer.stack = 80
+    viewer.street_bet = 20
+    viewer.cards = [(14, "h"), (13, "h")]
+    players[2].stack = 70
+    players[2].street_bet = 30
+    game.street = street
+    game.board = board
+    game.pot = 60
+    game.action_idx = 0
+    game.btn_idx = 2
+    result = game.getVisibleState(viewer)
+    assert result == {
+        "yourID": 1,
+        "actionID": 0,
+        "buttonID": 2,
+        "players": {
+            0: {
+                "name": "Alice",
+                "stack": 90,
+                "streetBet": 10,
+                "folded": False,
+                "allIn": False,
+            },
+            1: {
+                "name": "Bob",
+                "stack": 80,
+                "streetBet": 20,
+                "folded": False,
+                "allIn": False,
+            },
+            2: {
+                "name": "Carol",
+                "stack": 70,
+                "streetBet": 30,
+                "folded": False,
+                "allIn": False,
+            },
+        },
+        "board": " ".join(cardFormatter(card) for card in board),
+        "hand": " ".join(
+            cardFormatter(card)
+            for card in viewer.cards
+        ),
+        "pot": 60,
+    }
+
+def test_get_visible_state_returns_public_information_for_other_players():
+    players = [
+        Player("Alice"),
+        Player("Bob"),
+        Player("Carol"),
+    ]
+    game = Game(0, 1, 2, players, 500)
+    viewer = players[0]
+    opponent_one = players[1]
+    opponent_two = players[2]
+    viewer.cards = [(14, "s"), (14, "d")]
+    viewer.stack = 450
+    viewer.street_bet = 50
+    opponent_one.cards = [(13, "s"), (13, "d")]
+    opponent_one.stack = 375
+    opponent_one.street_bet = 125
+    opponent_one.folded = True
+    opponent_two.cards = [(2, "c"), (7, "h")]
+    opponent_two.stack = 0
+    opponent_two.street_bet = 200
+    opponent_two.all_in = True
+    game.board = [(10, "h"), (9, "h"), (8, "c")]
+    game.pot = 375
+    game.action_idx = 2
+    game.btn_idx = 1
+    result = game.getVisibleState(viewer)
+    assert result["yourID"] == 0
+    assert result["actionID"] == 2
+    assert result["buttonID"] == 1
+    assert result["pot"] == 375
+    assert result["players"][1] == {
+        "name": "Bob",
+        "stack": 375,
+        "streetBet": 125,
+        "folded": True,
+        "allIn": False,
+    }
+    assert result["players"][2] == {
+        "name": "Carol",
+        "stack": 0,
+        "streetBet": 200,
+        "folded": False,
+        "allIn": True,
+    }
+    expected_public_fields = {
+        "name",
+        "stack",
+        "streetBet",
+        "folded",
+        "allIn",
+    }
+    assert set(result["players"][1]) == expected_public_fields
+    assert set(result["players"][2]) == expected_public_fields
+    # Only the requesting player's private cards are returned.
+    assert result["hand"] == " ".join(
+        cardFormatter(card)
+        for card in viewer.cards
+    )
