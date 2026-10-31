@@ -1,5 +1,51 @@
+import json
+
 from game.game_engine import Game, Player
 import pytest
+
+@pytest.mark.parametrize("hand_ended", [False, True])
+def test_get_visible_state_json_round_trip(hand_ended):
+    players = [Player("Alice"), Player("Bob")]
+    game = Game(0, 1, 0, players, 100)
+    viewer = players[0]
+    viewer.cards = [(14, "s"), (13, "d")]
+    players[1].cards = [(2, "c"), (7, "h")]
+    game.street = "flop"
+    game.board = [(10, "h"), (11, "c"), (12, "d")]
+    game.action_idx = None if hand_ended else 0
+    game.handEnded = hand_ended
+
+    state = game.getVisibleState(viewer)
+    decoded = json.loads(json.dumps(state, allow_nan=False))
+
+    # JSON encoding must preserve the state structure and value types.
+    assert decoded == state
+    assert decoded == {
+        "yourID": 0,
+        "actionID": None if hand_ended else 0,
+        "buttonID": 0,
+        "players": [
+            {"id": 0, "name": "Alice", "stack": 100, "streetBet": 0,
+             "folded": False, "allIn": False},
+            {"id": 1, "name": "Bob", "stack": 100, "streetBet": 0,
+             "folded": False, "allIn": False},
+        ],
+        "board": [
+            {"rank": 10, "suit": "h"},
+            {"rank": 11, "suit": "c"},
+            {"rank": 12, "suit": "d"},
+        ],
+        "hand": [{"rank": 14, "suit": "s"}, {"rank": 13, "suit": "d"}],
+        "pot": 0,
+        "currStreet": "flop",
+        "outstandingBet": 0,
+        "yourTurn": not hand_ended,
+        "legalActions": {} if hand_ended else {
+            "call": False, "check": True, "bet": True,
+            "raise": False, "fold": True,
+        },
+    }
+
 
 def test_next_seat_returns_next_player():
     players = [
@@ -1288,29 +1334,42 @@ def test_apply_action_full_raise_reopens_action_for_other_eligible_players():
     assert game.toRaise == 20
     assert game.action_idx == 1
 
-from game.game_controller import cardFormatter
-
 @pytest.mark.parametrize(
-    ("street", "board"),
+    ("street", "board", "expected_board"),
     [
         pytest.param(
             "preflop",
+            [],
             [],
             id="preflop",
         ),
         pytest.param(
             "flop",
             [(2, "c"), (7, "d"), (11, "s")],
+            [{"rank": 2, "suit": "c"}, {"rank": 7, "suit": "d"}, {"rank": 11, "suit": "s"}],
             id="flop",
         ),
         pytest.param(
             "turn",
             [(2, "c"), (7, "d"), (11, "s"), (14, "h")],
+            [
+                {"rank": 2, "suit": "c"},
+                {"rank": 7, "suit": "d"},
+                {"rank": 11, "suit": "s"},
+                {"rank": 14, "suit": "h"},
+            ],
             id="turn",
         ),
         pytest.param(
             "river",
             [(2, "c"), (7, "d"), (11, "s"), (14, "h"), (10, "c")],
+            [
+                {"rank": 2, "suit": "c"},
+                {"rank": 7, "suit": "d"},
+                {"rank": 11, "suit": "s"},
+                {"rank": 14, "suit": "h"},
+                {"rank": 10, "suit": "c"},
+            ],
             id="river",
         ),
     ],
@@ -1318,6 +1377,7 @@ from game.game_controller import cardFormatter
 def test_get_visible_state_returns_expected_three_handed_state(
     street,
     board,
+    expected_board,
 ):
     players = [
         Player("Alice"),
@@ -1343,35 +1403,39 @@ def test_get_visible_state_returns_expected_three_handed_state(
         "yourID": 1,
         "actionID": 0,
         "buttonID": 2,
-        "players": {
-            0: {
+        "players": [
+            {
+                "id": 0,
                 "name": "Alice",
                 "stack": 90,
                 "streetBet": 10,
                 "folded": False,
                 "allIn": False,
             },
-            1: {
+            {
+                "id": 1,
                 "name": "Bob",
                 "stack": 80,
                 "streetBet": 20,
                 "folded": False,
                 "allIn": False,
             },
-            2: {
+            {
+                "id": 2,
                 "name": "Carol",
                 "stack": 70,
                 "streetBet": 30,
                 "folded": False,
                 "allIn": False,
             },
-        },
-        "board": " ".join(cardFormatter(card) for card in board),
-        "hand": " ".join(
-            cardFormatter(card)
-            for card in viewer.cards
-        ),
+        ],
+        "board": expected_board,
+        "hand": [{"rank": 14, "suit": "h"}, {"rank": 13, "suit": "h"}],
         "pot": 60,
+        "currStreet": street,
+        "outstandingBet": 0,
+        "yourTurn": False,
+        "legalActions": {},
     }
 
 def test_get_visible_state_returns_public_information_for_other_players():
@@ -1404,7 +1468,13 @@ def test_get_visible_state_returns_public_information_for_other_players():
     assert result["actionID"] == 2
     assert result["buttonID"] == 1
     assert result["pot"] == 375
+    assert result["board"] == [
+        {"rank": 10, "suit": "h"},
+        {"rank": 9, "suit": "h"},
+        {"rank": 8, "suit": "c"},
+    ]
     assert result["players"][1] == {
+        "id": 1,
         "name": "Bob",
         "stack": 375,
         "streetBet": 125,
@@ -1412,6 +1482,7 @@ def test_get_visible_state_returns_public_information_for_other_players():
         "allIn": False,
     }
     assert result["players"][2] == {
+        "id": 2,
         "name": "Carol",
         "stack": 0,
         "streetBet": 200,
@@ -1419,6 +1490,7 @@ def test_get_visible_state_returns_public_information_for_other_players():
         "allIn": True,
     }
     expected_public_fields = {
+        "id",
         "name",
         "stack",
         "streetBet",
@@ -1428,7 +1500,26 @@ def test_get_visible_state_returns_public_information_for_other_players():
     assert set(result["players"][1]) == expected_public_fields
     assert set(result["players"][2]) == expected_public_fields
     # Only the requesting player's private cards are returned.
-    assert result["hand"] == " ".join(
-        cardFormatter(card)
-        for card in viewer.cards
-    )
+    assert result["hand"] == [
+        {"rank": 14, "suit": "s"},
+        {"rank": 14, "suit": "d"},
+    ]
+
+@pytest.mark.parametrize("amount", ["20", 20.5, True, None, [], {}])
+def test_apply_action_rejects_non_integer_bet_amount(amount):
+    players = [Player("Alice"), Player("Bob")]
+    game = Game(0, 1, 0, players, 100)
+    game.street = "flop"
+    game.action_idx = 0
+    actor = players[0]
+
+    result = game.applyAction(actor, {"action": "bet", "amount": amount})
+
+    assert result is False
+    assert actor.stack == 100
+    assert actor.street_bet == 0
+    assert actor.total_bet == 0
+    assert actor.to_act is True
+    assert game.pot == 0
+    assert game.outstanding_bet == 0
+    assert game.action_idx == 0

@@ -30,32 +30,32 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         self.street = "preflop"
         self.timeLimit = 30 #limit time to act per player
         self.numHands = 0 #keep track of when to increase blinds
-        self.sb_idx= sb_idx#sb_idxindex in players list
-        self.bb_idx= bb_idx#bb_idxindex in players list
+        self.sb_idx= sb_idx #sb index in players list
+        self.bb_idx= bb_idx #bb index in players list
         self.btn_idx = btn_idx #btn index in players list
         self.blinds = {"small":10, "big":20}
         self.players = players
-        for player in self.players: #all players start with 2000 chips in a new game
+        for player in self.players: #all players start with same # of chips in a new game
             player.stack = starting_stack
         self.deck = Deck()
         self.pot = 0
         self.board = []
-        self.action_idx = (self.bb_idx+ 1) % len(self.players)
-        self.outstanding_bet = 0
-        self.toRaise = 0
+        self.action_idx = (self.bb_idx+ 1) % len(self.players) #first to act
+        self.outstanding_bet = 0 #tracks largest outstanding bet on a street
+        self.toRaise = 0 #tracks min raise amount
         self.gameActive = True
         self.handEnded = False
 
     def legalActions(self, player:Player, actedPreviouslyOnStreet, shortRaise=False):
-        #Only call this function on players that have action OR when reopening action after a bet/raise
+        # Only call this function on players that have action OR when reopening action after a bet/raise
         actions = {"call": False, "check": False, "bet": False, "raise": False, "fold": True}
-        #2 cases: no outstanding bet and some outstanding bet
+        # 2 cases: no outstanding bet and some outstanding bet
         if self.outstanding_bet == 0:
             if player.stack > 0:
                 actions["check"] = True
                 actions["bet"] = True
         else:
-            if player.stack > 0: #and player.street_bet < self.outstanding_bet:
+            if player.stack > 0: # and player.street_bet < self.outstanding_bet:
                 amount_to_call = self.outstanding_bet - player.street_bet
                 #this is only possible for BB preflop limp around
                 if amount_to_call == 0:
@@ -70,7 +70,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
                         actions["raise"] = True
         return actions
 
-    def _nextSeat(self, idx) -> int:
+    def _nextSeat(self, idx) -> int: # return next active seat
         for offset in range(1, len(self.players) + 1):
             index = (idx + offset) % len(self.players)
             if (not self.players[index].eliminated
@@ -80,7 +80,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
                 return index
         return None
 
-    def _nextAct(self) -> int | None:
+    def _nextAct(self) -> int | None: # mutate self.action_idx with next active seat
         """
         Cycle to the next active player
         No player left to act: proceed to next street
@@ -96,7 +96,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         self.action_idx = index
         return index
 
-    def _streetOver(self):
+    def _streetOver(self): #return bool representing whether a street has ended
         """For all players, all have to either be eliminated, folded, all-in, or have finished action"""
         res = True
         for player in self.players:
@@ -104,8 +104,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
                 res = False
         return res
 
-    #update Player attribute hasActed here
-    def _startStreet(self):
+    def _startStreet(self): # reset attributes & deal
         for player in self.players:
             player.street_bet = 0
             player.to_act = (
@@ -123,7 +122,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         self.outstanding_bet = 0
         self.toRaise = 0
 
-    def _nextStreet(self):
+    def _nextStreet(self): # cycle to next street and start it
         if self.street == "preflop":
             self.street = "flop"
             self._startStreet()
@@ -137,7 +136,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             self.street = "showdown"
             self._showdown()
 
-    def _checkRunoutNeeded(self):
+    def _checkRunoutNeeded(self): # check if a runout is needed for all-ins
         players_in_hand = [
             player
             for player in self.players
@@ -152,7 +151,7 @@ class Game: #game abtraction: bets, action, tracking, deck, board
 
         return len(players_who_can_act) < 2
 
-    def _runoutBoard(self):
+    def _runoutBoard(self): #cycle through all remaining streets and deal
         if self.street == "preflop":
             self.board = self.deck.flop()
             self.street = "flop"
@@ -195,14 +194,12 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             player.all_in = False
             player.to_act = True
 
-    #UPDATE FOR HEADS-UP
     def _startHand(self):
         """
         Reset game state, update active players, reset deck, move blinds, reset board
         """
-        #to-do: implement 2-player case
-        isWinner =  self._checkGameOver()
-        if isWinner: return isWinner
+        winner = self._checkGameOver() #check if a player has won the game
+        if winner: return winner
         self.resetHand()
         self.deck.newRound()
         players_in_hand = [
@@ -219,8 +216,8 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             self.sb_idx = self._nextSeat(self.btn_idx)
             self.bb_idx = self._nextSeat(self.sb_idx)
             self.action_idx = self._nextSeat(self.bb_idx)
-        for player in self.players:
-            if not player.eliminated: player.cards = self.deck.deal()
+        for player in players_in_hand:
+            player.cards = self.deck.deal()
         self._commit(self.players[self.sb_idx], self.blinds["small"])
         self._commit(self.players[self.bb_idx], self.blinds["big"])
         self.outstanding_bet = max(self.players[self.sb_idx].total_bet, self.players[self.bb_idx].total_bet)
@@ -242,7 +239,6 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         if player not in self.players or self.players[self.action_idx] is not player or player.eliminated or player.folded or player.all_in:
             raise ValueError("Player not eligle to act.")
         
-
     def _fold(self, player:Player):
         self._validateAction(player)
         player.folded = True
@@ -275,19 +271,17 @@ class Game: #game abtraction: bets, action, tracking, deck, board
 
     def _raise(self, player:Player, amount):
         #amount is the player's total street bet after the raise
-        #external controller script determines if this method is available to a player
         self._validateAction(player)
         target = min(amount, player.stack + player.street_bet) #target bet size cannot exceed a player's total chips
         additional = target - player.street_bet
         raise_size = target - self.outstanding_bet
-
-        #below code assumes external controller script has deemed a raise to be legal for the player
 
         #CASE 1: player can only short all-in raise
         #if player commits less than remaining stack, raise an error
         if player.stack + player.street_bet < self.outstanding_bet + self.toRaise:
             if additional < player.stack: raise ValueError("You must go all-in.")
             self._commit(player, player.stack)
+
         #CASE 2: player can full-raise
         else:
             if raise_size < self.toRaise: raise ValueError("Invalid raise amount.")
@@ -422,6 +416,8 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         #basic checks: player must exist, must have action, and requested action must be valid
         if not isinstance(action, dict): return False
         if player not in self.players: return False
+        if self.action_idx is None: return False
+        if self.handEnded: return False
         if self.players[self.action_idx] != player: return False
         if player.folded or player.eliminated or player.all_in or not player.to_act: return False
         actions = self.legalActions(player, False)
@@ -454,6 +450,11 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         self._nextAct()
         return True
 
+    @staticmethod
+    def serializeCard(card):
+        return {"rank": card[0], "suit": card[1]}
+
+
     def getVisibleState(self, player:Player):
         """
         *PLAYER
@@ -469,17 +470,33 @@ class Game: #game abtraction: bets, action, tracking, deck, board
         board
         action_idx
         """
-        from game.game_controller import cardFormatter
         you = None
         btnIdx = self.btn_idx
-        players = {} #(player ID/index: name, stack, street bet)
+        players = [] #(player ID/index: name, stack, street bet)
         for index, p in enumerate(self.players):
             if p is player: you = index
-            players[index] = {"name": p.name, "stack": p.stack, "streetBet": p.street_bet, "folded": p.folded, "allIn": p.all_in}
-        communityCards = " ".join(cardFormatter(card) for card in self.board)
-        holeCards = " ".join(cardFormatter(card) for card in player.cards)
+            players.append({"id": index, "name": p.name, "stack": p.stack, "streetBet": p.street_bet, "folded": p.folded, "allIn": p.all_in})
+        communityCards = [self.serializeCard(card) for card in self.board]
+        holeCards = [self.serializeCard(card) for card in player.cards]
         potSize = self.pot
         actionIdx = self.action_idx
+        if you is None:
+            raise ValueError("Player does not belong to this game.")
+        yourTurn = (
+            not self.handEnded
+            and self.action_idx == you
+            and player.to_act
+            and not player.folded
+            and not player.all_in
+            and not player.eliminated
+        )
+
+        legalActions = (
+            self.legalActions(player, False)
+            if yourTurn
+            else {}
+        )
+
         return {
             "yourID": you,
             "actionID": actionIdx,
@@ -487,5 +504,9 @@ class Game: #game abtraction: bets, action, tracking, deck, board
             "players": players,
             "board": communityCards,
             "hand": holeCards,
-            "pot": potSize
+            "pot": potSize,
+            "currStreet": self.street,
+            "outstandingBet": self.outstanding_bet,
+            "yourTurn": yourTurn,
+            "legalActions": legalActions
         }
