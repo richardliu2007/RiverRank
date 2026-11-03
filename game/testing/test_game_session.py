@@ -36,6 +36,40 @@ def test_fold_awards_pot_to_last_opponent(session):
     assert game.board == []
 
 
+def test_rejected_action_does_not_increment_version(session):
+    alice, bob = session.game.players
+    assert session.submit_action(alice, {"action": "call"}) is True
+    version_before = session.version
+
+    # Bob has matched the bet already, so calling is illegal.
+    assert session.submit_action(bob, {"action": "call"}) is False
+
+    assert session.version == version_before
+
+
+def test_successful_action_increments_version_exactly_once(session):
+    alice = session.game.players[0]
+    version_before = session.version
+
+    assert session.submit_action(alice, {"action": "call"}) is True
+
+    assert session.version == version_before + 1
+    assert session.game.street == "preflop"
+    assert session.game.action_idx == 1
+
+
+def test_action_with_automatic_street_transition_increments_version_once(session):
+    alice, bob = session.game.players
+    assert session.submit_action(alice, {"action": "call"}) is True
+    version_before = session.version
+
+    assert session.submit_action(bob, {"action": "check"}) is True
+
+    assert session.game.street == "flop"
+    assert len(session.game.board) == 3
+    assert session.version == version_before + 1
+
+
 def test_completed_preflop_betting_advances_to_flop(session):
     game = session.game
     alice, bob = game.players

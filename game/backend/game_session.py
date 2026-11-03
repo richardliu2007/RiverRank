@@ -3,12 +3,14 @@ from game.game_engine import Game, Player
 class GameSession:
     def __init__(self, game: Game):
         self.game = game
+        self.version = 0
 
     def submit_action(self, player: Player, action: dict):
         if not self.game.applyAction(player, action):
             return False
 
         self._advance_game()
+        self.version += 1
         return True
 
     def _advance_game(self):
